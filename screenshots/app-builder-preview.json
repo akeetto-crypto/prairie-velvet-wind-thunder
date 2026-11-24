@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "В такт",
+      "hasCanvas": false,
+      "bodyTextLen": 608,
+      "bodyTextHash": "c9b3153883bdf248777007d07a18d99f186034a705cb0e7d815747f85a5f0706",
+      "bodyTextPrefix": "SONGSTERR · ВМЕСТЕ В такт Одна комната на телефон, ноутбук и реп",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "В такт",
+      "hasCanvas": false,
+      "bodyTextLen": 608,
+      "bodyTextHash": "c9b3153883bdf248777007d07a18d99f186034a705cb0e7d815747f85a5f0706",
+      "bodyTextPrefix": "SONGSTERR · ВМЕСТЕ В такт Одна комната на телефон, ноутбук и реп",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}

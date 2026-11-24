@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Literata", "Iowan Old Style", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-bg: #14110e;
+  --color-surface: #221c17;
+  --color-surface-2: #2c241c;
+  --color-fg: #f4efe6;
+  --color-muted: #b3a394;
+  --color-line: #3a3128;
+  --color-accent: #e39b45;
+  --color-accent-ink: #2a1c0c;
+  --color-ember: #d4532c;
+  --color-paper: #f6f1e7;
+  --color-ink: #1c1814;
+  --color-ink-soft: #5e564c;
+  --color-staff: #d5ccbe;
+  --color-ok: #8eae78;
+  --radius-lg: 1rem;
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  html,
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  input[type="range"] {
+    accent-color: var(--color-accent);
+    height: 1.75rem;
+    width: 100%;
+  }
+}
+
+@keyframes beat-pip {
+  from {
+    transform: scale(1.45);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.beat-pip {
+  animation: beat-pip 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beat-pip {
+    animation: none;
+  }
+}

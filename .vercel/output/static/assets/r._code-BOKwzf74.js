@@ -1,0 +1,1 @@
+import{a as e}from"./createLucideIcon-BTOyGatk.js";import{t}from"./session-9sfPnTUn.js";import{n}from"./index-Bk_iE4Gb.js";var r=e();function i(){let{code:e}=n.useParams();return(0,r.jsx)(t,{mode:`room`,code:e})}export{i as component};
