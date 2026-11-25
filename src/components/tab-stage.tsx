@@ -140,7 +140,7 @@ export const TabStage = memo(function TabStage({
         if (ev.t + ev.d < t0 - 40 || ev.t > t1 + 20) continue;
         const x = playX + (ev.t - pos) * pxPerMs;
         const hot = ev.t <= pos + 30 && pos < ev.t + Math.max(ev.d, 70);
-        drawNotationEvent(ctx, x, current.kind, ev.notes, ev.rhythm, Boolean(ev.rest));
+        drawNotationEvent(ctx, x, current.kind, current.instrument, ev.notes, ev.rhythm, Boolean(ev.rest));
         if (ev.chord) {
           ctx.fillStyle = hot ? ACTIVE : CHORD;
           ctx.font = "700 14px Manrope, sans-serif";
@@ -289,18 +289,19 @@ function drawNotationStaff(ctx: CanvasRenderingContext2D, left: number, right: n
   ctx.restore();
 }
 
-function staffY(note: ViewNote, kind: number): number {
+function staffY(note: ViewNote, kind: number, instrument: string): number {
   if (kind === 2) { const ys=[NOTATION_TOP,NOTATION_TOP+1.5*NOTATION_GAP,NOTATION_TOP+2*NOTATION_GAP,NOTATION_TOP+3*NOTATION_GAP,NOTATION_TOP+3.5*NOTATION_GAP,NOTATION_TOP+4*NOTATION_GAP]; return ys[Math.max(0,Math.min(5,note.s))]; }
-  const midi=Math.round(note.m), pc=((midi%12)+12)%12; let step=0, distance=Infinity;
+  const octaveShift = /bass/i.test(instrument) ? 24 : /guitar/i.test(instrument) ? 12 : 0;
+  const midi=Math.round(note.m + octaveShift), pc=((midi%12)+12)%12; let step=0, distance=Infinity;
   NOTE_STEPS.forEach((natural,index)=>{ const d=Math.min((pc-natural+12)%12,(natural-pc+12)%12); if(d<distance){distance=d;step=index;} });
   const diatonic=(Math.floor(midi/12)-1)*7+step, e4=4*7+2;
   return NOTATION_TOP+4*NOTATION_GAP-(diatonic-e4)*(NOTATION_GAP/2);
 }
 
-function drawNotationEvent(ctx: CanvasRenderingContext2D,x:number,kind:number,notes:ViewNote[],rhythm:Rhythm,rest:boolean):void {
+function drawNotationEvent(ctx: CanvasRenderingContext2D,x:number,kind:number,instrument:string,notes:ViewNote[],rhythm:Rhythm,rest:boolean):void {
   const center=NOTATION_TOP+2*NOTATION_GAP;
   if(rest||!notes.length){ctx.save();ctx.strokeStyle=FRET;ctx.lineWidth=2;ctx.beginPath();if(rhythm.base<=2){ctx.moveTo(x-5,center-1);ctx.lineTo(x+5,center-1);ctx.lineTo(x+5,center+3);ctx.lineTo(x-5,center+3);}else{ctx.moveTo(x+1,center-11);ctx.lineTo(x-3,center-5);ctx.lineTo(x+3,center-1);ctx.lineTo(x-2,center+5);ctx.lineTo(x+2,center+10);}ctx.stroke();ctx.restore();return;}
-  const ys=notes.map(n=>staffY(n,kind)), avg=ys.reduce((a,b)=>a+b,0)/ys.length, up=avg>=center, stemX=x+(up?5:-5), filled=rhythm.base>=4;
+  const ys=notes.map(n=>staffY(n,kind,instrument)), avg=ys.reduce((a,b)=>a+b,0)/ys.length, up=avg>=center, stemX=x+(up?5:-5), filled=rhythm.base>=4;
   ctx.save();ctx.strokeStyle=FRET;ctx.fillStyle=FRET;ctx.lineWidth=1.35;
   notes.forEach((note,i)=>{const y=ys[i], nx=x+(i>0&&Math.abs(y-ys[i-1])<=NOTATION_GAP/2?(i%2?4:-4):0);if(kind===2&&[42,44,46,49,51,52,53,55,57,59].includes(Math.round(note.m))){ctx.beginPath();ctx.moveTo(nx-4,y-4);ctx.lineTo(nx+4,y+4);ctx.moveTo(nx+4,y-4);ctx.lineTo(nx-4,y+4);ctx.stroke();}else{ctx.beginPath();ctx.ellipse(nx,y,4.5,3.2,-0.28,0,Math.PI*2);if(filled)ctx.fill();else ctx.stroke();}
     if(y<NOTATION_TOP-1||y>NOTATION_TOP+4*NOTATION_GAP+1){const ledger=Math.round((y-(NOTATION_TOP+4*NOTATION_GAP))/(NOTATION_GAP/2));for(let l=0;l<=Math.abs(ledger);l++){const ly=NOTATION_TOP+4*NOTATION_GAP+Math.sign(ledger)*l*(NOTATION_GAP/2);if(ly<NOTATION_TOP-1||ly>NOTATION_TOP+4*NOTATION_GAP+1){ctx.beginPath();ctx.moveTo(nx-7,ly);ctx.lineTo(nx+7,ly);ctx.stroke();}}}
