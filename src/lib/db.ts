@@ -98,7 +98,12 @@ async function applyNeonMigrations(pool: import("pg").Pool): Promise<void> {
 
   const client = await pool.connect();
   try {
-    await applyMigrations(client, migrations);
+    const roomMigrationPath = "/migrations/0002_rooms.sql";
+      await applyMigrations(client, migrations, {
+        requiredRelations: migrations[roomMigrationPath]
+          ? { [roomMigrationPath]: ["rooms", "room_presence"] }
+          : {},
+      });
   } finally {
     client.release();
   }
