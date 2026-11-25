@@ -48,6 +48,12 @@ test("runtime migration runner repairs missing room tables even when the ledger 
 
   assert.equal(count, 0);
   assert.ok(queries.some(({ text }) => text === sql));
+  const relationCheck = queries.find(({ text }) => text.startsWith("SELECT to_regclass("));
+  assert.equal(
+    relationCheck.text,
+    "SELECT to_regclass($1) IS NOT NULL AS relation_0, to_regclass($2) IS NOT NULL AS relation_1",
+  );
+  assert.deepEqual(relationCheck.params, ["rooms", "room_presence"]);
   assert.ok(queries.some(({ text }) => text.includes("ON CONFLICT (name) DO NOTHING")));
   assert.equal(queries.at(-1).text, "COMMIT");
 });
