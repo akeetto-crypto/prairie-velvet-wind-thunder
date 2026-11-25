@@ -2,6 +2,8 @@
 
 export type MixKind = 0 | 1 | 2;
 
+export type Rhythm = { base: 1 | 2 | 4 | 8 | 16 | 32; dots: number; tuplet?: number };
+
 export type ViewNote = {
   s: number;
   f: number;
@@ -16,6 +18,8 @@ export type ViewEvent = {
   d: number;
   chord?: string;
   notes: ViewNote[];
+  rhythm: Rhythm;
+  rest?: boolean;
 };
 
 export type Bar = {
@@ -129,6 +133,13 @@ export function beatQuarters(b: RawBeat): number {
   }
   if (typeof b.tuplet === "number" && b.tuplet > 1) q *= 2 / b.tuplet;
   return q;
+}
+
+function rhythmOf(quarters: number, tuplet?: number): Rhythm {
+  const candidates: Array<{ base: Rhythm["base"]; dots: number; quarters: number }> = [];
+  for (const base of [1, 2, 4, 8, 16, 32] as const) { const q = 4 / base; candidates.push({base,dots:0,quarters:q},{base,dots:1,quarters:q*1.5},{base,dots:2,quarters:q*1.75}); }
+  const closest = candidates.reduce((best, item) => Math.abs(item.quarters-quarters)<Math.abs(best.quarters-quarters)?item:best);
+  return { base:closest.base,dots:closest.dots,tuplet:tuplet&&tuplet>1?tuplet:undefined };
 }
 
 function velocityGain(v: string | number | undefined, ghost: boolean, dead: boolean): number {
@@ -387,7 +398,8 @@ function compileTrack(part: RawPart, trackIndex: number, master: Master, songMs:
             ring: Boolean(beat.letRing) && !staccato && !dead && !grace && kind !== 2,
           });
         }
-        if (viewNotes.length || beat.chord?.text) {
+        const isRest = Boolean(beat.rest) || (beat.notes?.length ?? 0) === 0 || (beat.notes ?? []).every((note) => note.rest);
+        if (viewNotes.length || beat.chord?.text || isRest) {
           const t = quarterToMs(at, master.tempos);
           const end = quarterToMs(at + Math.max(bq, 0.1), master.tempos);
           events.push({
@@ -395,6 +407,8 @@ function compileTrack(part: RawPart, trackIndex: number, master: Master, songMs:
             d: Math.max(36, Math.round(end - t)),
             chord: beat.chord?.text?.trim() || undefined,
             notes: viewNotes,
+            rhythm: rhythmOf(bq, beat.tuplet),
+            rest: isRest && viewNotes.length === 0,
           });
         }
         q += bq;
@@ -423,6 +437,27 @@ function compileTrack(part: RawPart, trackIndex: number, master: Master, songMs:
   }
 
   events.sort((a, b) => a.t - b.t);
+  if (kind === 2) {
+    const merged: ViewEvent[] = [];
+    for (const event of events) {
+      const previous = merged[merged.length - 1];
+      const sameRhythm = previous
+        && previous.rhythm.base === event.rhythm.base
+        && previous.rhythm.dots === event.rhythm.dots
+        && previous.rhythm.tuplet === event.rhythm.tuplet;
+      if (previous && sameRhythm && Math.abs(previous.t - event.t) <= 2) {
+        for (const note of event.notes) {
+          if (!previous.notes.some((item) => item.m === note.m && item.s === note.s)) previous.notes.push(note);
+        }
+        previous.d = Math.max(previous.d, event.d);
+        previous.rest = previous.notes.length === 0 && Boolean(previous.rest && event.rest);
+      } else {
+        merged.push({ ...event, notes: [...event.notes] });
+      }
+    }
+    events.length = 0;
+    for (const event of merged) events.push(event);
+  }
   notes.sort((a, b) => a.t - b.t);
 
   return {
@@ -500,12 +535,13 @@ export function formatTime(ms: number): string {
 }
 
 export function drumLine(midi: number): number {
-  if (midi === 49 || midi === 52 || midi === 55 || midi === 57) return 0;
-  if (midi === 51 || midi === 53 || midi === 59) return 1;
-  if (midi === 42 || midi === 44 || midi === 46) return 0;
-  if (midi === 38 || midi === 40 || midi === 37 || midi === 39) return 2;
-  if (midi === 41 || midi === 43 || midi === 45 || midi === 47 || midi === 48 || midi === 50) return 3;
-  if (midi === 35 || midi === 36) return 5;
+  if ([49, 52, 55, 57].includes(midi)) return 0; // crash and splash cymbals
+  if ([51, 53, 59].includes(midi)) return 1; // ride cymbals
+  if ([42, 44, 46].includes(midi)) return 2; // hi-hat
+  if ([37, 38, 39, 40].includes(midi)) return 3; // snare
+  if ([47, 48, 50].includes(midi)) return 4; // high and mid toms
+  if ([41, 43, 45].includes(midi)) return 5; // low toms
+  if ([35, 36].includes(midi)) return 6; // bass drum
   return 4;
 }
 
@@ -520,7 +556,7 @@ export function drumGlyph(midi: number): string {
   return "·";
 }
 
-const DRUM_LABELS = ["C", "R", "S", "T", "·", "K"];
+const DRUM_LABELS = ["Cr", "Rd", "HH", "Sn", "MT", "FT", "K"];
 
 export function drumLaneLabel(line: number): string {
   return DRUM_LABELS[line] ?? "·";

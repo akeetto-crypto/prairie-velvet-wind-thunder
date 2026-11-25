@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Check, Copy, ExternalLink, Loader2, Pause, Play, Search, Users } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, ExternalLink, Loader2, Pause, Play, Search, Users, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TabStage, useBarLabel } from "@/components/tab-stage";
 import { BandEngine } from "@/lib/audio-engine";
@@ -51,6 +51,12 @@ export function Session(props: SessionProps) {
   const [missing, setMissing] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [mutedTracks, setMutedTracks] = useState<number[]>([]);
+  const [countIn, setCountIn] = useState(false);
+  const [metronome, setMetronome] = useState(false);
+  const [trackVolume, setTrackVolume] = useState(1);
+  const [metronomeVolume, setMetronomeVolume] = useState(0.65);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [clock, setClock] = useState(0);
   const [listeners, setListeners] = useState(0);
   const [drift, setDrift] = useState("синхрон");
@@ -69,6 +75,7 @@ export function Session(props: SessionProps) {
   const seqRef = useRef(0);
   const driving = useRef(false);
   const playingRef = useRef(false);
+  const countInRef = useRef(false);
   const speedRef = useRef(1);
   const armed = useRef(false);
   const genRef = useRef(0);
@@ -95,6 +102,8 @@ export function Session(props: SessionProps) {
     setMeta(next);
     setView(song.view);
     const engine = engineRef.current;
+    engine?.setMetronomeGrid(song.view.bars);
+    engine?.setMutedTracks(mutedTracks);
     const vocals = song.tracks.filter((t) => t.vocal).map((t) => t.index);
     if (!engine) return;
     if (takeMix && mixRef.current.length) engine.load(mixRef.current, song.view.trackIndex, vocals);
@@ -126,11 +135,12 @@ export function Session(props: SessionProps) {
     setSpeed(room.speed);
     const sameSong = metaRef.current?.songId === room.songId;
     const needMix = !sameSong || mixRef.current.length === 0;
-    const needView = !sameSong || viewRef.current?.trackIndex !== room.trackIndex;
+    const preferredTrack = readPreferredTrack(room.songId, room.trackIndex);
+    const needView = !sameSong || viewRef.current?.trackIndex !== preferredTrack;
     if (needMix || needView) {
       if (loadingRef.current) return;
       try {
-        const ok = await ensureTrack(room.songId, room.trackIndex, needMix);
+        const ok = await ensureTrack(room.songId, preferredTrack, needMix);
         if (!ok) return;
       } catch (err) {
         setError(messageOf(err));
@@ -159,6 +169,9 @@ export function Session(props: SessionProps) {
       seqRef.current = room.seq;
       if (room.playing) {
         engine.setSpeed(room.speed, target);
+        const scheduledStart = room.anchorMs - (offsetRef.current ?? 0);
+        engine.play(target, scheduledStart);
+        if (countInRef.current && scheduledStart > Date.now() + 500) engine.countIn(beatLength(viewRef.current, target));
         playingRef.current = true;
         setPlaying(true);
       } else {
@@ -172,6 +185,9 @@ export function Session(props: SessionProps) {
     } else if (room.playing) {
       if (!playingRef.current) {
         engine.setSpeed(room.speed, target);
+        const scheduledStart = room.anchorMs - (offsetRef.current ?? 0);
+        engine.play(target, scheduledStart);
+        if (countInRef.current && scheduledStart > Date.now() + 500) engine.countIn(beatLength(viewRef.current, target));
         playingRef.current = true;
         setPlaying(true);
       }
@@ -191,6 +207,7 @@ export function Session(props: SessionProps) {
     speed?: number;
     songId?: number;
     trackIndex?: number;
+    anchorMs?: number;
     title?: string;
     artist?: string;
   }) {
@@ -212,6 +229,7 @@ export function Session(props: SessionProps) {
           playing: partial.playing ?? playingRef.current,
           positionMs: partial.positionMs ?? engineRef.current?.position() ?? 0,
           speed: partial.speed ?? speedRef.current,
+          anchorMs: partial.anchorMs,
         },
       });
       offsetRef.current = smoothOffset(offsetRef.current, sent, res.serverNow, Date.now());
@@ -363,10 +381,18 @@ export function Session(props: SessionProps) {
     if (!playingRef.current) {
       let from = engine.position();
       if (current.durationMs && from >= current.durationMs - 80) from = 0;
-      engine.play(from);
+      const beatMs = beatLength(viewRef.current, from);
+      const countInDelay = countIn ? (beatMs * 4) / speedRef.current : 0;
+      const startAt = Date.now() + countInDelay;
+      engine.play(from, startAt);
+      if (countIn) engine.countIn(beatMs);
       playingRef.current = true;
       setPlaying(true);
-      await publish({ playing: true, positionMs: from });
+      await publish({
+        playing: true,
+        positionMs: from,
+        anchorMs: startAt + (offsetRef.current ?? 0),
+      });
     } else {
       const pos = engine.pause();
       playingRef.current = false;
@@ -406,17 +432,26 @@ export function Session(props: SessionProps) {
     try {
       const ok = await ensureTrack(current.songId, index, mixRef.current.length === 0);
       if (!ok) return;
+      rememberPreferredTrack(current.songId, index);
       const engine = engineRef.current;
       if (!engine) return;
+      engine.setMutedTracks(mutedTracks);
       if (was && armed.current) engine.play(pos);
       else engine.seek(pos);
       playingRef.current = was && armed.current;
       setPlaying(playingRef.current);
-      await publish({ trackIndex: index, positionMs: pos, playing: playingRef.current });
     } catch (err) {
       setError(messageOf(err));
       setPhase("error");
     }
+  }
+
+  function toggleMuteTrack(index: number) {
+    setMutedTracks((current) => {
+      const next = current.includes(index) ? current.filter((item) => item !== index) : [...current, index];
+      engineRef.current?.setMutedTracks(next);
+      return next;
+    });
   }
 
   async function chooseSong(songId: number, title: string, artist: string, trackIndex: number) {
@@ -465,7 +500,7 @@ export function Session(props: SessionProps) {
   const shown = Math.min(clock, duration || clock);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-4 px-4 py-4 md:px-6 md:py-6">
+    <main className={`session mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-4 px-4 py-4 md:px-6 md:py-6${controlsVisible ? "" : " controls-collapsed"}`}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link to="/" className="font-serif text-xl font-semibold tracking-tight text-fg">
@@ -511,30 +546,40 @@ export function Session(props: SessionProps) {
         </section>
       ) : (
         <>
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="track-strip flex gap-2 overflow-x-auto pb-1">
             {(meta?.tracks ?? []).map((track) => (
-              <button
-                key={track.index}
-                type="button"
-                onClick={() => void chooseTrack(track.index)}
-                className={cn(
-                  "h-11 shrink-0 rounded-full border px-3 text-left text-sm",
-                  view?.trackIndex === track.index
-                    ? "border-accent bg-accent text-accent-ink"
-                    : "border-line bg-surface text-fg",
-                )}
-              >
-                <span className="font-semibold">{track.name}</span>
-                <span className={view?.trackIndex === track.index ? "text-accent-ink/80" : "text-muted"}>
-                  {" "}
-                  · {track.instrument}
-                </span>
-              </button>
+              <div className="track-chip flex shrink-0 items-center gap-1" key={track.index}>
+                <button
+                  type="button"
+                  onClick={() => void chooseTrack(track.index)}
+                  className={cn(
+                    "h-11 rounded-l-full border px-3 text-left text-sm",
+                    view?.trackIndex === track.index
+                      ? "border-accent bg-accent text-accent-ink"
+                      : "border-line bg-surface text-fg",
+                    mutedTracks.includes(track.index) ? "opacity-60" : "",
+                  )}
+                >
+                  <span className="font-semibold">{track.name}</span>
+                  <span className={view?.trackIndex === track.index ? "text-accent-ink/80" : "text-muted"}>
+                    {" "}· {track.instrument}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${mutedTracks.includes(track.index) ? "Включить" : "Выключить"} ${track.name}`}
+                  aria-pressed={mutedTracks.includes(track.index)}
+                  onClick={() => toggleMuteTrack(track.index)}
+                  className="inline-flex h-11 w-10 items-center justify-center rounded-r-full border border-line bg-surface text-muted"
+                >
+                  {mutedTracks.includes(track.index) ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+                </button>
+              </div>
             ))}
           </div>
 
-          <section className="relative overflow-hidden rounded-2xl border border-black/50 bg-[#1a1b1e] shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
-            <div className="h-[54vh] min-h-72 max-h-[640px]">
+          <section className="tab-panel relative overflow-hidden rounded-2xl border border-black/50 bg-[#1a1b1e] shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+            <div className="tab-canvas h-[54vh] min-h-72 max-h-[640px]">
               <TabStage view={view} getPosition={getPosition} onSeek={onSeek} />
             </div>
             {phase === "loading" ? (
@@ -559,7 +604,7 @@ export function Session(props: SessionProps) {
             ) : null}
           </section>
 
-          <section className="rounded-2xl border border-line bg-surface p-3 md:p-4">
+          <section className="player-controls rounded-2xl border border-line bg-surface p-3 md:p-4">
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -621,11 +666,40 @@ export function Session(props: SessionProps) {
                   {value === 1 ? "1×" : `${value}×`}
                 </button>
               ))}
+              <button
+                type="button"
+                aria-pressed={countIn}
+                onClick={() => setCountIn((value) => {
+                  countInRef.current = !value;
+                  return !value;
+                })}
+                className={cn("h-10 rounded-full border px-3 text-sm font-semibold", countIn ? "border-accent bg-accent text-accent-ink" : "border-line text-fg")}
+              >
+                Отсчёт 1·2·3·4
+              </button>
+              <button
+                type="button"
+                aria-pressed={metronome}
+                onClick={() => {
+                  setMetronome((value) => {
+                    engineRef.current?.setMetronome(!value);
+                    return !value;
+                  });
+                }}
+                className={cn("h-10 rounded-full border px-3 text-sm font-semibold", metronome ? "border-accent bg-accent text-accent-ink" : "border-line text-fg")}
+              >
+                Метроном
+              </button>
               <span className="ml-auto inline-flex h-3 w-3 items-center justify-center">
                 <span className={cn("beat-pip size-2.5 rounded-full", playing ? "bg-ember" : "bg-line")} key={barLabel} />
               </span>
             </div>
+            <div className="volume-controls mt-3 grid grid-cols-2 gap-3">
+              <label className="min-w-0 text-xs font-medium text-muted">Громкость трека<input type="range" min={0} max={1} step={0.01} value={trackVolume} aria-label="Громкость основного трека" onChange={(event) => { const value = Number(event.currentTarget.value); setTrackVolume(value); engineRef.current?.setTrackVolume(value); }} /></label>
+              <label className="min-w-0 text-xs font-medium text-muted">Громкость метронома<input type="range" min={0} max={1} step={0.01} value={metronomeVolume} aria-label="Громкость метронома" onChange={(event) => { const value = Number(event.currentTarget.value); setMetronomeVolume(value); engineRef.current?.setMetronomeVolume(value); }} /></label>
+            </div>
           </section>
+          <button type="button" className="landscape-control-toggle" aria-label={controlsVisible ? "Скрыть панель управления" : "Показать панель управления"} aria-expanded={controlsVisible} onClick={() => setControlsVisible((visible) => !visible)}>{controlsVisible ? <ChevronDown className="size-5" /> : <ChevronUp className="size-5" />}<span>{controlsVisible ? "Скрыть" : "Управление"}</span></button>
 
           {error ? (
             <p className="rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ember" role="alert">
@@ -705,4 +779,31 @@ export function Session(props: SessionProps) {
       )}
     </main>
   );
+}
+
+function readPreferredTrack(songId: number, fallback: number): number {
+  const key = `vtakt-track-${songId}`;
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored !== null && Number.isInteger(Number(stored)) && Number(stored) >= 0) return Number(stored);
+    rememberPreferredTrack(songId, fallback);
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
+function rememberPreferredTrack(songId: number, trackIndex: number): void {
+  try {
+    localStorage.setItem(`vtakt-track-${songId}`, String(trackIndex));
+  } catch {
+    // Local instrument choice is an enhancement; playback still works without storage.
+  }
+}
+
+function beatLength(view: PartView | null, atMs: number): number {
+  const bar = view?.bars.find((item) => item.t <= atMs && item.t + item.d > atMs) ?? view?.bars[0];
+  if (!bar || !Number.isFinite(bar.d) || bar.d <= 0) return 500;
+  const beats = Number(bar.sig.split("/")[0]) || 4;
+  return Math.max(100, Math.min(2000, bar.d / beats));
 }
