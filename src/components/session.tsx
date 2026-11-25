@@ -265,8 +265,6 @@ export function Session(props: SessionProps) {
   useEffect(() => {
     const engine = new BandEngine();
     engineRef.current = engine;
-    engine.setTrackVolume(trackVolume);
-    engine.setMetronomeVolume(metronomeVolume);
     peerRef.current = readPeer();
     return () => engine.destroy();
   }, []);
@@ -392,7 +390,7 @@ export function Session(props: SessionProps) {
       setPlaying(true);
       await publish({
         playing: true,
-        positionMs: from + countInDelay * speedRef.current,
+        positionMs: from,
         anchorMs: startAt + (offsetRef.current ?? 0),
       });
     } else {

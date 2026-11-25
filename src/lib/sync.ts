@@ -15,7 +15,8 @@ export type RoomSnapshot = {
 /** Where the shared clock says the playhead is, in song milliseconds. */
 export function roomPosition(room: Pick<RoomSnapshot, "playing" | "positionMs" | "anchorMs" | "speed">, serverNow: number): number {
   if (!room.playing) return Math.max(0, room.positionMs);
-  return Math.max(0, room.positionMs + (serverNow - room.anchorMs) * room.speed);
+  const elapsed = Math.max(0, serverNow - room.anchorMs);
+  return Math.max(0, room.positionMs + elapsed * room.speed);
 }
 
 export function smoothOffset(prev: number | null, sentAt: number, serverNow: number, receivedAt: number): number {

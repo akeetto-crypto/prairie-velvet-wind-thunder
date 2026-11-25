@@ -284,7 +284,7 @@ const NOTATION_GAP = 7;
 const NOTE_STEPS = [0, 2, 4, 5, 7, 9, 11];
 
 function drawNotationStaff(ctx: CanvasRenderingContext2D, left: number, right: number): void {
-  ctx.save(); ctx.strokeStyle = "#777f8b"; ctx.globalAlpha = 0.72; ctx.lineWidth = 0.8;
+  ctx.save(); ctx.strokeStyle = BAR; ctx.globalAlpha = 0.72; ctx.lineWidth = 0.8;
   for (let line = 0; line < 5; line++) { const y = NOTATION_TOP + line * NOTATION_GAP; ctx.beginPath(); ctx.moveTo(left,y); ctx.lineTo(right,y); ctx.stroke(); }
   ctx.restore();
 }
