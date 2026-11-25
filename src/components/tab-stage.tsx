@@ -296,22 +296,49 @@ function drawTabRhythm(
   ctx.fillStyle = FRET;
   ctx.lineWidth = 1.4;
   if (rest) {
+    const restY = rhythm.base === 1 ? y + 2 : rhythm.base === 2 ? y - 3 : y;
     if (rhythm.base <= 2) {
-      ctx.fillRect(x - 4, y - 1, 8, 3);
+      // Whole rests hang below the rhythm line; half rests sit above it.
+      ctx.fillRect(x - 4, restY, 8, 4);
+    } else if (rhythm.base === 4) {
+      ctx.beginPath();
+      ctx.moveTo(x + 1, y - 11);
+      ctx.lineTo(x - 3, y - 5);
+      ctx.lineTo(x + 3, y - 1);
+      ctx.lineTo(x - 2, y + 5);
+      ctx.lineTo(x + 2, y + 11);
+      ctx.stroke();
     } else {
       ctx.beginPath();
-      ctx.moveTo(x + 1, y - 10); ctx.lineTo(x - 3, y - 4); ctx.lineTo(x + 3, y); ctx.lineTo(x - 2, y + 6);
+      ctx.moveTo(x + 1, y - 11);
+      ctx.lineTo(x - 3, y - 5);
+      ctx.lineTo(x + 3, y - 1);
+      ctx.lineTo(x - 2, y + 5);
       ctx.stroke();
-      for (let i = 1; i < rhythmicFlags(rhythm); i++) {
-        ctx.beginPath(); ctx.moveTo(x + 1, y - 2 + i * 4); ctx.lineTo(x - 2, y + 2 + i * 4); ctx.stroke();
+      for (let flag = 0; flag < rhythmicFlags(rhythm); flag++) {
+        const flagY = y + 3 + flag * 4;
+        ctx.beginPath();
+        ctx.moveTo(x - 2, flagY);
+        ctx.quadraticCurveTo(x + 5, flagY + 2, x + 2, flagY + 7);
+        ctx.stroke();
       }
     }
-    if (rhythm.dots) ctx.fillRect(x + 7, y - 2, 2, 2);
+    for (let dot = 0; dot < rhythm.dots; dot++) {
+      ctx.fillRect(x + 7 + dot * 4, restY - 1, 2, 2);
+    }
+    if (rhythm.tuplet) {
+      ctx.font = "600 9px Manrope, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(String(rhythm.tuplet), x, y + 16);
+    }
     ctx.restore();
     return;
   }
   if (rhythm.base === 1) {
-    ctx.fillRect(x - 3, y + 1, 6, 2);
+    ctx.beginPath();
+    ctx.ellipse(x, y + 4, 4, 2.5, -0.2, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let dot = 0; dot < rhythm.dots; dot++) ctx.fillRect(x + 6 + dot * 4, y + 3, 2, 2);
     ctx.restore();
     return;
   }
@@ -432,12 +459,7 @@ function drawDrumEvent(
       ctx.beginPath();
       ctx.ellipse(noteX, y, 4.5, 3.3, -0.25, 0, Math.PI * 2);
       if (rhythm.base <= 2) {
-        ctx.fill();
-        ctx.strokeStyle = BG;
-        ctx.lineWidth = 1.3;
         ctx.stroke();
-        ctx.strokeStyle = FRET;
-        ctx.lineWidth = 1.5;
       } else {
         ctx.fill();
       }
