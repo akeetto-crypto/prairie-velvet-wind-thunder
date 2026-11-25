@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from "react";
-import { barAt, drumGlyph, drumLaneLabel, tabStringLabel, type PartView } from "@/lib/timeline";
+import { barAt, drumLaneLabel, tabStringLabel, type PartView } from "@/lib/timeline";
 
 const BG = "#1a1b1e";
 const GUTTER_BG = "#141518";
@@ -148,7 +148,12 @@ export const TabStage = memo(function TabStage({
         for (const note of ev.notes) {
           if (note.s < 0 || note.s > strings - 1) continue;
           const y = yOf(note.s);
-          const glyph = current.kind === 2 ? drumGlyph(note.m) : note.ghost ? `(${note.f})` : String(note.f);
+          const noteColor = note.tie ? FRET_DIM : hot ? ACTIVE : FRET;
+          if (current.kind === 2) {
+            drawDrumNote(ctx, x, y, note.s, strings, note.m, noteColor, fretPx);
+            continue;
+          }
+          const glyph = note.ghost ? `(${note.f})` : String(note.f);
           const width = ctx.measureText(glyph).width;
           const plate = Math.max(16, fretPx);
           ctx.fillStyle = BG;
@@ -248,4 +253,40 @@ export function useBarLabel(view: PartView | null, ms: number): string {
   const bar = view ? barAt(view.bars, ms) : null;
   if (!bar) return "";
   return bar.marker ? `Такт ${bar.i} · ${bar.marker}` : `Такт ${bar.i}`;
+}
+
+function drawDrumNote(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  lane: number,
+  lanes: number,
+  midi: number,
+  color: string,
+  size: number,
+): void {
+  const cymbal = [42, 44, 46, 49, 51, 52, 53, 55, 57, 59].includes(Math.round(midi));
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.8;
+  if (cymbal) {
+    const r = Math.max(4, size * 0.22);
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - r);
+    ctx.lineTo(x + r, y + r);
+    ctx.moveTo(x + r, y - r);
+    ctx.lineTo(x - r, y + r);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.max(4.5, size * 0.27), Math.max(3.5, size * 0.19), -0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const stemUp = lane >= lanes / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + (stemUp ? 4 : -4), y);
+  ctx.lineTo(x + (stemUp ? 4 : -4), y + (stemUp ? -20 : 20));
+  ctx.stroke();
+  ctx.restore();
 }
