@@ -19,7 +19,7 @@ function layoutAt(view: PartView, pos: number, width: number, height: number) {
   const drums = view.kind === 2;
   const strings = drums ? 5 : Math.max(4, view.strings);
   const header = drums ? 0 : 56;
-  const footer = drums ? 0 : 36;
+  const footer = drums ? 0 : Math.max(56, Math.min(110, height * 0.22));
   const usable = Math.max(strings * 16, height - header - footer);
   const gap = drums ? Math.min(18, Math.max(12, (height - 80) / 4)) : Math.max(16, Math.min(44, usable / Math.max(1, strings - 1)));
   const staffH = (strings - 1) * gap;
@@ -145,13 +145,27 @@ export const TabStage = memo(function TabStage({
         const x = playX + (ev.t - pos) * pxPerMs;
         const hot = ev.t <= pos + 30 && pos < ev.t + Math.max(ev.d, 70);
         const next = current.events[eventIndex + 1];
-        const sameBar = next && barAt(current.bars, next.t)?.i === barAt(current.bars, ev.t)?.i;
-        const canBeam = !ev.rest && ev.rhythm.base >= 8 && next && !next.rest && next.rhythm.base === ev.rhythm.base && sameBar && Math.abs(ev.t + ev.d - next.t) < 45;
+        const eventBar = barAt(current.bars, ev.t);
+        const nextBar = next ? barAt(current.bars, next.t) : null;
+        const sameBar = next && eventBar && nextBar && nextBar.i === eventBar.i;
+        const [beatsInBar, denominator] = (eventBar?.sig ?? "4/4").split("/").map(Number);
+        const compound = denominator === 8 && beatsInBar % 3 === 0;
+        const beatGroups = compound ? beatsInBar / 3 : beatsInBar;
+        const groupDuration = eventBar && beatGroups > 0 ? eventBar.d / beatGroups : 0;
+        const sameBeatGroup = Boolean(next && eventBar && groupDuration > 0
+          && Math.floor((ev.t - eventBar.t) / groupDuration) === Math.floor((next.t - eventBar.t) / groupDuration));
+        const canBeam = !ev.rest && ev.rhythm.base >= 8 && next && !next.rest
+          && next.rhythm.base === ev.rhythm.base && sameBar && sameBeatGroup
+          && Math.abs(ev.t + ev.d - next.t) < 45;
         const beamedFromPrevious = beamed.has(eventIndex);
         if (current.kind === 2) {
           drawDrumEvent(ctx, x, top, bottom, gap, ev.notes, ev.rhythm, Boolean(ev.rest), canBeam ? playX + (next!.t - pos) * pxPerMs : undefined, beamedFromPrevious);
         } else {
-          drawTabRhythm(ctx, x, bottom, ev.rhythm, Boolean(ev.rest), canBeam ? playX + (next!.t - pos) * pxPerMs : undefined, beamedFromPrevious);
+          drawTabRhythm(
+            ctx, x, top, bottom, gap, ev.rhythm, Boolean(ev.rest),
+            canBeam ? playX + (next!.t - pos) * pxPerMs : undefined,
+            beamedFromPrevious, h - bottom,
+          );
         }
         if (canBeam) beamed.add(eventIndex + 1);
         if (ev.chord) {
@@ -171,6 +185,11 @@ export const TabStage = memo(function TabStage({
           ctx.fillRect(x - width / 2 - 4, y - plate / 2, width + 8, plate);
           ctx.fillStyle = note.tie ? FRET_DIM : hot ? ACTIVE : FRET;
           ctx.fillText(glyph, x, y + 0.5);
+          for (let dot = 0; dot < ev.rhythm.dots; dot++) {
+            ctx.beginPath();
+            ctx.arc(x + width / 2 + 5 + dot * 4, y - 1, 1.3, 0, Math.PI * 2);
+            ctx.fill();
+          }
           if (note.art && !note.tie) {
             ctx.fillStyle = hot ? ACTIVE : MARKER;
             ctx.font = "700 11px Manrope, sans-serif";
@@ -210,6 +229,13 @@ export const TabStage = memo(function TabStage({
         current.tuning.forEach((midi, i) => {
           if (i < strings) ctx.fillText(tabStringLabel(midi), 28, yOf(i));
         });
+      }
+      if (current.kind !== 2 && here) {
+        const [numerator, denominator] = here.sig.split("/");
+        ctx.font = "700 11px Manrope, sans-serif";
+        ctx.fillStyle = "#c6cbd3";
+        ctx.fillText(numerator, 28, top - 18);
+        ctx.fillText(denominator, 28, top - 5);
       }
 
       ctx.strokeStyle = CURSOR;
@@ -290,39 +316,42 @@ function rhythmicFlags(rhythm: Rhythm): number {
 function drawTabRhythm(
   ctx: CanvasRenderingContext2D,
   x: number,
+  top: number,
   bottom: number,
+  gap: number,
   rhythm: Rhythm,
   rest: boolean,
   beamTo?: number,
   beamedFromPrevious = false,
+  availableHeight = 40,
 ): void {
-  const y = bottom + 9;
+  const y = bottom;
+  const restY = top + gap * 2;
   ctx.save();
   ctx.strokeStyle = FRET;
   ctx.fillStyle = FRET;
   ctx.lineWidth = 1.4;
   if (rest) {
-    const restY = rhythm.base === 1 ? y + 2 : rhythm.base === 2 ? y - 3 : y;
+    const restPosition = rhythm.base === 1 ? restY + gap * 0.5 : restY - gap * 0.5;
     if (rhythm.base <= 2) {
-      // Whole rests hang below the rhythm line; half rests sit above it.
-      ctx.fillRect(x - 4, restY, 8, 4);
+      ctx.fillRect(x - 4, restPosition - 2, 8, 4);
     } else if (rhythm.base === 4) {
       ctx.beginPath();
-      ctx.moveTo(x + 1, y - 11);
-      ctx.lineTo(x - 3, y - 5);
-      ctx.lineTo(x + 3, y - 1);
-      ctx.lineTo(x - 2, y + 5);
-      ctx.lineTo(x + 2, y + 11);
+      ctx.moveTo(x + 1, restY - 12);
+      ctx.lineTo(x - 3, restY - 5);
+      ctx.lineTo(x + 3, restY - 1);
+      ctx.lineTo(x - 2, restY + 5);
+      ctx.lineTo(x + 2, restY + 12);
       ctx.stroke();
     } else {
       ctx.beginPath();
-      ctx.moveTo(x + 1, y - 11);
-      ctx.lineTo(x - 3, y - 5);
-      ctx.lineTo(x + 3, y - 1);
-      ctx.lineTo(x - 2, y + 5);
+      ctx.moveTo(x + 1, restY - 12);
+      ctx.lineTo(x - 3, restY - 5);
+      ctx.lineTo(x + 3, restY - 1);
+      ctx.lineTo(x - 2, restY + 5);
       ctx.stroke();
       for (let flag = 0; flag < rhythmicFlags(rhythm); flag++) {
-        const flagY = y + 3 + flag * 4;
+        const flagY = restY + 3 + flag * 4;
         ctx.beginPath();
         ctx.moveTo(x - 2, flagY);
         ctx.quadraticCurveTo(x + 5, flagY + 2, x + 2, flagY + 7);
@@ -335,20 +364,17 @@ function drawTabRhythm(
     if (rhythm.tuplet) {
       ctx.font = "600 9px Manrope, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(String(rhythm.tuplet), x, y + 16);
+      ctx.fillText(String(rhythm.tuplet), x, restY + gap);
     }
     ctx.restore();
     return;
   }
   if (rhythm.base === 1) {
-    ctx.beginPath();
-    ctx.ellipse(x, y + 4, 4, 2.5, -0.2, 0, Math.PI * 2);
-    ctx.stroke();
-    for (let dot = 0; dot < rhythm.dots; dot++) ctx.fillRect(x + 6 + dot * 4, y + 3, 2, 2);
     ctx.restore();
     return;
   }
-  const endY = y + 22;
+  const stemLength = Math.max(14, Math.min(gap * 1.75, availableHeight - 8));
+  const endY = y + stemLength;
   ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, endY); ctx.stroke();
   if (beamTo != null) {
     const levels = rhythmicFlags(rhythm);
@@ -363,7 +389,6 @@ function drawTabRhythm(
       ctx.quadraticCurveTo(x + 8, flagY + 4, x + 4, flagY + 9); ctx.stroke();
     }
   }
-  for (let dot = 0; dot < rhythm.dots; dot++) ctx.fillRect(x + 5 + dot * 4, y + 1, 2, 2);
   if (rhythm.tuplet) {
     ctx.font = "600 9px Manrope, sans-serif"; ctx.textAlign = "center";
     ctx.fillText(String(rhythm.tuplet), beamTo == null ? x : (x + beamTo) / 2, endY + 12);
