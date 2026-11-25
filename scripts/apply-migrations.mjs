@@ -35,7 +35,7 @@ export async function applyMigrations(client, migrations, { requiredRelations = 
       }
       if (relations.length === 0) continue;
       const checks = relations
-        .map((_, index) => `to_regclass(${index + 1}) IS NOT NULL AS relation_${index}`)
+        .map((_, index) => "to_regclass($" + (index + 1) + ") IS NOT NULL AS relation_" + index)
         .join(", ");
       const { rows } = await client.query(`SELECT ${checks}`, relations);
       const status = rows[0];
