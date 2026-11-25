@@ -1,4 +1,4 @@
-import type { MixNote } from "@/lib/timeline";
+import type { Bar, MixNote } from "@/lib/timeline";
 
 const LOOKAHEAD_MS = 200;
 const MAX_VOICES = 72;
@@ -23,6 +23,10 @@ export class BandEngine {
   private notes: MixNote[] = [];
   private focus = 0;
   private vocal = new Set<number>();
+  private muted = new Set<number>();
+  private metronome = false;
+  private clicks: Array<{ t: number; accent: boolean }> = [];
+  private clickCursor = 0;
   private playing = false;
   private speed = 1;
   private originAudio = 0;
@@ -54,6 +58,35 @@ export class BandEngine {
     this.focus = track;
   }
 
+  setMutedTracks(tracks: number[]): void {
+    this.muted = new Set(tracks);
+  }
+
+  setMetronome(enabled: boolean): void {
+    this.metronome = enabled;
+    this.clickCursor = this.seekClick(this.position());
+  }
+
+  setMetronomeGrid(bars: Bar[]): void {
+    const clicks: Array<{ t: number; accent: boolean }> = [];
+    for (const bar of bars) {
+      const [numerator, denominator] = bar.sig.split("/").map(Number);
+      const beats = Math.max(1, Math.min(12, numerator || 4));
+      const beatMs = bar.d / beats;
+      for (let beat = 0; beat < beats; beat++) {
+        if (denominator === 8 && beats >= 6 && beat % 3 !== 0) continue;
+        clicks.push({ t: bar.t + beat * beatMs, accent: beat === 0 });
+      }
+    }
+    this.clicks = clicks;
+    this.clickCursor = this.seekClick(this.position());
+  }
+
+  countIn(beatMs: number, beats = 4): void {
+    if (!this.ctx || !this.playing || !Number.isFinite(beatMs) || beatMs <= 0) return;
+    for (let beat = beats; beat > 0; beat--) this.scheduleClick(-beat * beatMs, beat === beats);
+  }
+
   async unlock(): Promise<void> {
     const ctx = this.ensure();
     if (ctx.state !== "running") await ctx.resume();
@@ -62,19 +95,21 @@ export class BandEngine {
 
   position(): number {
     if (!this.playing || !this.ctx) return this.pausedAt;
-    return this.originSong + (this.ctx.currentTime - this.originAudio) * 1000 * this.speed;
+    if (this.ctx.currentTime < this.originAudio) return this.originSong;
+    return Math.max(0, this.originSong + (this.ctx.currentTime - this.originAudio) * 1000 * this.speed);
   }
 
-  play(fromMs: number): void {
+  play(fromMs: number, startAtMs = Date.now()): void {
     const ctx = this.ensure();
     void ctx.resume();
     this.warm(this.notes);
     this.silence();
     this.playing = true;
     this.originSong = Math.max(0, fromMs);
-    this.originAudio = ctx.currentTime + 0.04;
+    this.originAudio = ctx.currentTime + Math.max(0, startAtMs - Date.now()) / 1000 + 0.04;
     this.scheduledUntil = this.originSong;
     this.cursor = this.seekIndex(this.originSong);
+    this.clickCursor = this.seekClick(this.originSong);
     this.pausedAt = this.originSong;
     this.kick();
   }
@@ -189,12 +224,19 @@ export class BandEngine {
       if (note.t < from) continue;
       this.schedule(note);
     }
+    if (this.metronome) {
+      while (this.clickCursor < this.clicks.length && this.clicks[this.clickCursor].t < horizon) {
+        const click = this.clicks[this.clickCursor++];
+        if (click.t >= from) this.scheduleClick(click.t, click.accent);
+      }
+    }
     this.scheduledUntil = horizon;
     this.gc();
   }
 
   private gainFor(note: MixNote): number {
     const vel = note.v ?? 0.9;
+    if (this.muted.has(note.track)) return 0;
     if (this.vocal.has(note.track)) return 0;
     if (note.z === 2) return (note.track === this.focus ? 0.22 : 0.12) * vel;
     if (note.track === this.focus) {
@@ -207,6 +249,36 @@ export class BandEngine {
     if (note.k === 1) return 0.2 * vel;
     if (note.z === 1) return 0.12 * vel;
     return 0.09 * vel;
+  }
+
+  private seekClick(ms: number): number {
+    let lo = 0;
+    let hi = this.clicks.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.clicks[mid].t < ms) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  private scheduleClick(songMs: number, accent: boolean): void {
+    const ctx = this.ctx;
+    const master = this.master;
+    if (!ctx || !master) return;
+    const when = this.originAudio + (songMs - this.originSong) / (1000 * this.speed);
+    if (when < ctx.currentTime - 0.06) return;
+    const osc = ctx.createOscillator();
+    const amp = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(accent ? 1500 : 1050, when);
+    amp.gain.setValueAtTime(0.0001, when);
+    amp.gain.exponentialRampToValueAtTime(accent ? 0.22 : 0.13, when + 0.003);
+    amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
+    osc.connect(amp);
+    amp.connect(master);
+    osc.start(when);
+    osc.stop(when + 0.05);
   }
 
   private schedule(note: MixNote): void {
