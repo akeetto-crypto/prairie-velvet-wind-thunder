@@ -84,7 +84,10 @@ export class BandEngine {
 
   countIn(beatMs: number, beats = 4): void {
     if (!this.ctx || !this.playing || !Number.isFinite(beatMs) || beatMs <= 0) return;
-    for (let beat = beats; beat > 0; beat--) this.scheduleClick(-beat * beatMs, beat === beats);
+    for (let beat = beats; beat > 0; beat--) {
+      const when = this.originAudio - (beat * beatMs) / (1000 * this.speed);
+      this.scheduleClickAt(when, beat === beats);
+    }
   }
 
   async unlock(): Promise<void> {
@@ -264,10 +267,16 @@ export class BandEngine {
 
   private scheduleClick(songMs: number, accent: boolean): void {
     const ctx = this.ctx;
-    const master = this.master;
-    if (!ctx || !master) return;
+    if (!ctx) return;
     const when = this.originAudio + (songMs - this.originSong) / (1000 * this.speed);
     if (when < ctx.currentTime - 0.06) return;
+    this.scheduleClickAt(when, accent);
+  }
+
+  private scheduleClickAt(when: number, accent: boolean): void {
+    const ctx = this.ctx;
+    const master = this.master;
+    if (!ctx || !master || when < ctx.currentTime - 0.06) return;
     const osc = ctx.createOscillator();
     const amp = ctx.createGain();
     osc.type = "sine";
