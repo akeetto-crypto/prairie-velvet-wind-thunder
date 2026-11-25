@@ -200,7 +200,9 @@ export const TabStage = memo(function TabStage({
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       if (current.kind === 2) {
-        for (let s = 0; s < strings; s++) ctx.fillText(drumLaneLabel(s), 28, yOf(s));
+        for (let lane = 0; lane < 6; lane++) {
+          ctx.fillText(drumLaneLabel(lane), 28, drumY(lane, top, gap));
+        }
       } else if (current.tuning) {
         current.tuning.forEach((midi, i) => {
           if (i < strings) ctx.fillText(tabStringLabel(midi), 28, yOf(i));
