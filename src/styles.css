@@ -60,96 +60,21 @@
 }
 
 @media (orientation: landscape) and (max-height: 560px) {
-  .session {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(230px, 28vw);
-    grid-template-rows: auto minmax(0, 34dvh) minmax(0, 1fr);
-    gap: 0.6rem;
-    height: 100dvh;
-    min-height: 0;
-    max-width: none;
-    overflow: hidden;
-    padding: 0.65rem;
-  }
-
-  .session > header {
-    grid-column: 1 / -1;
-    align-items: center;
-    min-height: 2.6rem;
-  }
-
-  .session > header h1 {
-    margin-top: 0;
-    font-size: 1.15rem;
-    line-height: 1.3;
-  }
-
-  .session > header p {
-    display: none;
-  }
-
-  .track-strip {
-    grid-column: 2;
-    grid-row: 2;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    margin-top: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding: 0 0.1rem 0.2rem;
-    align-self: start;
-    max-height: 35dvh;
-  }
-
-  .track-chip {
-    width: 100%;
-  }
-
-  .track-chip > button:first-child {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
-  }
-
-  .tab-panel {
-    grid-column: 1;
-    grid-row: 2 / 4;
-    height: auto;
-    min-height: 0;
-  }
-
-  .tab-canvas {
-    height: 100%;
-    min-height: 0;
-    max-height: none;
-  }
-
-  .player-controls {
-    grid-column: 2;
-    grid-row: 3;
-    align-self: end;
-    max-height: 62dvh;
-    overflow-y: auto;
-    padding: 0.55rem;
-  }
-
-  .player-controls > div:first-child {
-    gap: 0.45rem;
-  }
-
-  .player-controls button {
-    min-height: 2.4rem;
-  }
-
-  .session > section:not(.tab-panel):not(.player-controls),
-  .session > p {
-    display: none;
-  }
+  .session { position:fixed; inset:0; display:block; width:100vw; height:100dvh; min-height:0; max-width:none; overflow:hidden; padding:0; }
+  .session > header { display:none; }
+  .track-strip { position:fixed; z-index:3; top:.35rem; left:.4rem; right:.4rem; display:flex; gap:.35rem; overflow-x:auto; padding:.2rem; background:rgb(20 17 14 / 82%); border-radius:.8rem; backdrop-filter:blur(10px); }
+  .track-chip { flex:0 0 auto; width:auto; }
+  .track-chip > button:first-child { max-width:42vw; }
+  .tab-panel { position:absolute; z-index:1; inset:0; height:100dvh; min-height:0; border:0; border-radius:0; }
+  .tab-canvas { height:100dvh; min-height:0; max-height:none; }
+  .player-controls { position:fixed; z-index:5; right:.55rem; bottom:3.4rem; left:.55rem; max-height:48dvh; overflow-y:auto; padding:.6rem; background:rgb(34 28 23 / 94%); backdrop-filter:blur(12px); box-shadow:0 12px 36px rgb(0 0 0 / 36%); }
+  .controls-collapsed .player-controls { display:none; }
+  .landscape-control-toggle { position:fixed; z-index:6; right:.6rem; bottom:.45rem; display:inline-flex; min-height:2.75rem; align-items:center; gap:.35rem; border:1px solid var(--color-line); border-radius:999px; background:var(--color-surface); color:var(--color-fg); padding:0 .85rem; box-shadow:0 4px 18px rgb(0 0 0 / 30%); }
+  .player-controls button { min-height:2.75rem; }
+  .volume-controls input[type="range"] { min-height:2.4rem; }
+  .session > section:not(.tab-panel):not(.player-controls), .session > p { display:none; }
 }
+.landscape-control-toggle { display:none; }
 
 @media (prefers-reduced-motion: reduce) {
   .beat-pip {

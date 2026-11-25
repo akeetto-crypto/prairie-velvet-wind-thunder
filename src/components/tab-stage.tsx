@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from "react";
-import { barAt, drumLaneLabel, tabStringLabel, type PartView } from "@/lib/timeline";
+import { barAt, drumLaneLabel, tabStringLabel, type PartView, type Rhythm, type ViewNote } from "@/lib/timeline";
 
 const BG = "#1a1b1e";
 const GUTTER_BG = "#141518";
@@ -17,7 +17,7 @@ const GUTTER = 54;
 
 function layoutAt(view: PartView, pos: number, width: number, height: number) {
   const strings = view.kind === 2 ? 6 : Math.max(4, view.strings);
-  const header = 56;
+  const header = 88;
   const footer = 20;
   const usable = Math.max(strings * 16, height - header - footer);
   const gap = Math.max(16, Math.min(44, usable / Math.max(1, strings - 1)));
@@ -79,6 +79,7 @@ export const TabStage = memo(function TabStage({
       const t1 = pos + (w - playX) / pxPerMs;
 
       const here = barAt(current.bars, pos);
+      drawNotationStaff(ctx, GUTTER, w);
       ctx.save();
       ctx.beginPath();
       ctx.rect(GUTTER, 0, w - GUTTER, h);
@@ -139,6 +140,7 @@ export const TabStage = memo(function TabStage({
         if (ev.t + ev.d < t0 - 40 || ev.t > t1 + 20) continue;
         const x = playX + (ev.t - pos) * pxPerMs;
         const hot = ev.t <= pos + 30 && pos < ev.t + Math.max(ev.d, 70);
+        drawNotationEvent(ctx, x, current.kind, ev.notes, ev.rhythm, Boolean(ev.rest));
         if (ev.chord) {
           ctx.fillStyle = hot ? ACTIVE : CHORD;
           ctx.font = "700 14px Manrope, sans-serif";
@@ -150,7 +152,7 @@ export const TabStage = memo(function TabStage({
           const y = yOf(note.s);
           const noteColor = note.tie ? FRET_DIM : hot ? ACTIVE : FRET;
           if (current.kind === 2) {
-            drawDrumNote(ctx, x, y, note.s, strings, note.m, noteColor, fretPx);
+            drawDrumNote(ctx, x, y, note.m, noteColor, fretPx);
             continue;
           }
           const glyph = note.ghost ? `(${note.f})` : String(note.f);
@@ -255,16 +257,7 @@ export function useBarLabel(view: PartView | null, ms: number): string {
   return bar.marker ? `Такт ${bar.i} · ${bar.marker}` : `Такт ${bar.i}`;
 }
 
-function drawDrumNote(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  lane: number,
-  lanes: number,
-  midi: number,
-  color: string,
-  size: number,
-): void {
+function drawDrumNote(ctx: CanvasRenderingContext2D, x: number, y: number, midi: number, color: string, size: number): void {
   const cymbal = [42, 44, 46, 49, 51, 52, 53, 55, 57, 59].includes(Math.round(midi));
   ctx.save();
   ctx.strokeStyle = color;
@@ -283,10 +276,36 @@ function drawDrumNote(
     ctx.ellipse(x, y, Math.max(4.5, size * 0.27), Math.max(3.5, size * 0.19), -0.28, 0, Math.PI * 2);
     ctx.fill();
   }
-  const stemUp = lane >= lanes / 2;
-  ctx.beginPath();
-  ctx.moveTo(x + (stemUp ? 4 : -4), y);
-  ctx.lineTo(x + (stemUp ? 4 : -4), y + (stemUp ? -20 : 20));
-  ctx.stroke();
   ctx.restore();
+}
+
+const NOTATION_TOP = 15;
+const NOTATION_GAP = 7;
+const NOTE_STEPS = [0, 2, 4, 5, 7, 9, 11];
+
+function drawNotationStaff(ctx: CanvasRenderingContext2D, left: number, right: number): void {
+  ctx.save(); ctx.strokeStyle = "#777f8b"; ctx.globalAlpha = 0.72; ctx.lineWidth = 0.8;
+  for (let line = 0; line < 5; line++) { const y = NOTATION_TOP + line * NOTATION_GAP; ctx.beginPath(); ctx.moveTo(left,y); ctx.lineTo(right,y); ctx.stroke(); }
+  ctx.restore();
+}
+
+function staffY(note: ViewNote, kind: number): number {
+  if (kind === 2) { const ys=[NOTATION_TOP,NOTATION_TOP+1.5*NOTATION_GAP,NOTATION_TOP+2*NOTATION_GAP,NOTATION_TOP+3*NOTATION_GAP,NOTATION_TOP+3.5*NOTATION_GAP,NOTATION_TOP+4*NOTATION_GAP]; return ys[Math.max(0,Math.min(5,note.s))]; }
+  const midi=Math.round(note.m), pc=((midi%12)+12)%12; let step=0, distance=Infinity;
+  NOTE_STEPS.forEach((natural,index)=>{ const d=Math.min((pc-natural+12)%12,(natural-pc+12)%12); if(d<distance){distance=d;step=index;} });
+  const diatonic=(Math.floor(midi/12)-1)*7+step, e4=4*7+2;
+  return NOTATION_TOP+4*NOTATION_GAP-(diatonic-e4)*(NOTATION_GAP/2);
+}
+
+function drawNotationEvent(ctx: CanvasRenderingContext2D,x:number,kind:number,notes:ViewNote[],rhythm:Rhythm,rest:boolean):void {
+  const center=NOTATION_TOP+2*NOTATION_GAP;
+  if(rest||!notes.length){ctx.save();ctx.strokeStyle=FRET;ctx.lineWidth=2;ctx.beginPath();if(rhythm.base<=2){ctx.moveTo(x-5,center-1);ctx.lineTo(x+5,center-1);ctx.lineTo(x+5,center+3);ctx.lineTo(x-5,center+3);}else{ctx.moveTo(x+1,center-11);ctx.lineTo(x-3,center-5);ctx.lineTo(x+3,center-1);ctx.lineTo(x-2,center+5);ctx.lineTo(x+2,center+10);}ctx.stroke();ctx.restore();return;}
+  const ys=notes.map(n=>staffY(n,kind)), avg=ys.reduce((a,b)=>a+b,0)/ys.length, up=avg>=center, stemX=x+(up?5:-5), filled=rhythm.base>=4;
+  ctx.save();ctx.strokeStyle=FRET;ctx.fillStyle=FRET;ctx.lineWidth=1.35;
+  notes.forEach((note,i)=>{const y=ys[i], nx=x+(i>0&&Math.abs(y-ys[i-1])<=NOTATION_GAP/2?(i%2?4:-4):0);if(kind===2&&[42,44,46,49,51,52,53,55,57,59].includes(Math.round(note.m))){ctx.beginPath();ctx.moveTo(nx-4,y-4);ctx.lineTo(nx+4,y+4);ctx.moveTo(nx+4,y-4);ctx.lineTo(nx-4,y+4);ctx.stroke();}else{ctx.beginPath();ctx.ellipse(nx,y,4.5,3.2,-0.28,0,Math.PI*2);if(filled)ctx.fill();else ctx.stroke();}
+    if(y<NOTATION_TOP-1||y>NOTATION_TOP+4*NOTATION_GAP+1){const ledger=Math.round((y-(NOTATION_TOP+4*NOTATION_GAP))/(NOTATION_GAP/2));for(let l=0;l<=Math.abs(ledger);l++){const ly=NOTATION_TOP+4*NOTATION_GAP+Math.sign(ledger)*l*(NOTATION_GAP/2);if(ly<NOTATION_TOP-1||ly>NOTATION_TOP+4*NOTATION_GAP+1){ctx.beginPath();ctx.moveTo(nx-7,ly);ctx.lineTo(nx+7,ly);ctx.stroke();}}}
+  });
+  if(rhythm.base!==1){const top=Math.min(...ys),bottom=Math.max(...ys),end=up?Math.min(top-28,NOTATION_TOP-6):Math.max(bottom+28,NOTATION_TOP+4*NOTATION_GAP+6);ctx.beginPath();ctx.moveTo(stemX,up?bottom:top);ctx.lineTo(stemX,end);ctx.stroke();const flags=rhythm.base>=8?Math.round(Math.log2(rhythm.base/4)):0;for(let f=0;f<flags;f++){const fy=end+(up?5:-5)*f;ctx.beginPath();ctx.moveTo(stemX,fy);ctx.quadraticCurveTo(stemX+(up?9:-9),fy+(up?5:-5),stemX+(up?4:-4),fy+(up?11:-11));ctx.stroke();}}
+  if(rhythm.dots)for(let d=0;d<rhythm.dots;d++){ctx.beginPath();ctx.arc(x+10+d*4,Math.min(...ys),1.4,0,Math.PI*2);ctx.fill();}
+  if(rhythm.tuplet){ctx.font="600 9px Manrope,sans-serif";ctx.textAlign="center";ctx.fillText(String(rhythm.tuplet),x,NOTATION_TOP-5);}ctx.restore();
 }

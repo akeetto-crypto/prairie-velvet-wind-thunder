@@ -2,6 +2,8 @@
 
 export type MixKind = 0 | 1 | 2;
 
+export type Rhythm = { base: 1 | 2 | 4 | 8 | 16 | 32; dots: number; tuplet?: number };
+
 export type ViewNote = {
   s: number;
   f: number;
@@ -16,6 +18,8 @@ export type ViewEvent = {
   d: number;
   chord?: string;
   notes: ViewNote[];
+  rhythm: Rhythm;
+  rest?: boolean;
 };
 
 export type Bar = {
@@ -129,6 +133,13 @@ export function beatQuarters(b: RawBeat): number {
   }
   if (typeof b.tuplet === "number" && b.tuplet > 1) q *= 2 / b.tuplet;
   return q;
+}
+
+function rhythmOf(quarters: number, tuplet?: number): Rhythm {
+  const candidates: Array<{ base: Rhythm["base"]; dots: number; quarters: number }> = [];
+  for (const base of [1, 2, 4, 8, 16, 32] as const) { const q = 4 / base; candidates.push({base,dots:0,quarters:q},{base,dots:1,quarters:q*1.5},{base,dots:2,quarters:q*1.75}); }
+  const closest = candidates.reduce((best, item) => Math.abs(item.quarters-quarters)<Math.abs(best.quarters-quarters)?item:best);
+  return { base:closest.base,dots:closest.dots,tuplet:tuplet&&tuplet>1?tuplet:undefined };
 }
 
 function velocityGain(v: string | number | undefined, ghost: boolean, dead: boolean): number {
@@ -387,7 +398,8 @@ function compileTrack(part: RawPart, trackIndex: number, master: Master, songMs:
             ring: Boolean(beat.letRing) && !staccato && !dead && !grace && kind !== 2,
           });
         }
-        if (viewNotes.length || beat.chord?.text) {
+        const isRest = Boolean(beat.rest) || (beat.notes?.length ?? 0) === 0 || (beat.notes ?? []).every((note) => note.rest);
+        if (viewNotes.length || beat.chord?.text || isRest) {
           const t = quarterToMs(at, master.tempos);
           const end = quarterToMs(at + Math.max(bq, 0.1), master.tempos);
           events.push({
@@ -395,6 +407,8 @@ function compileTrack(part: RawPart, trackIndex: number, master: Master, songMs:
             d: Math.max(36, Math.round(end - t)),
             chord: beat.chord?.text?.trim() || undefined,
             notes: viewNotes,
+            rhythm: rhythmOf(bq, beat.tuplet),
+            rest: isRest && viewNotes.length === 0,
           });
         }
         q += bq;

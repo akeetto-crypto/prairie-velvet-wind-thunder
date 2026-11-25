@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Check, Copy, ExternalLink, Loader2, Pause, Play, Search, Users, Volume2, VolumeX } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, ExternalLink, Loader2, Pause, Play, Search, Users, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TabStage, useBarLabel } from "@/components/tab-stage";
 import { BandEngine } from "@/lib/audio-engine";
@@ -54,6 +54,9 @@ export function Session(props: SessionProps) {
   const [mutedTracks, setMutedTracks] = useState<number[]>([]);
   const [countIn, setCountIn] = useState(false);
   const [metronome, setMetronome] = useState(false);
+  const [trackVolume, setTrackVolume] = useState(1);
+  const [metronomeVolume, setMetronomeVolume] = useState(0.65);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [clock, setClock] = useState(0);
   const [listeners, setListeners] = useState(0);
   const [drift, setDrift] = useState("синхрон");
@@ -72,6 +75,7 @@ export function Session(props: SessionProps) {
   const seqRef = useRef(0);
   const driving = useRef(false);
   const playingRef = useRef(false);
+  const countInRef = useRef(false);
   const speedRef = useRef(1);
   const armed = useRef(false);
   const genRef = useRef(0);
@@ -167,7 +171,7 @@ export function Session(props: SessionProps) {
         engine.setSpeed(room.speed, target);
         const scheduledStart = room.anchorMs - (offsetRef.current ?? 0);
         engine.play(target, scheduledStart);
-        if (scheduledStart > Date.now() + 500) engine.countIn(beatLength(viewRef.current, target));
+        if (countInRef.current && scheduledStart > Date.now() + 500) engine.countIn(beatLength(viewRef.current, target));
         playingRef.current = true;
         setPlaying(true);
       } else {
@@ -183,7 +187,7 @@ export function Session(props: SessionProps) {
         engine.setSpeed(room.speed, target);
         const scheduledStart = room.anchorMs - (offsetRef.current ?? 0);
         engine.play(target, scheduledStart);
-        if (scheduledStart > Date.now() + 500) engine.countIn(beatLength(viewRef.current, target));
+        if (countInRef.current && scheduledStart > Date.now() + 500) engine.countIn(beatLength(viewRef.current, target));
         playingRef.current = true;
         setPlaying(true);
       }
@@ -261,6 +265,8 @@ export function Session(props: SessionProps) {
   useEffect(() => {
     const engine = new BandEngine();
     engineRef.current = engine;
+    engine.setTrackVolume(trackVolume);
+    engine.setMetronomeVolume(metronomeVolume);
     peerRef.current = readPeer();
     return () => engine.destroy();
   }, []);
@@ -496,7 +502,7 @@ export function Session(props: SessionProps) {
   const shown = Math.min(clock, duration || clock);
 
   return (
-    <main className="session mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-4 px-4 py-4 md:px-6 md:py-6">
+    <main className={`session mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-4 px-4 py-4 md:px-6 md:py-6${controlsVisible ? "" : " controls-collapsed"}`}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link to="/" className="font-serif text-xl font-semibold tracking-tight text-fg">
@@ -665,7 +671,10 @@ export function Session(props: SessionProps) {
               <button
                 type="button"
                 aria-pressed={countIn}
-                onClick={() => setCountIn((value) => !value)}
+                onClick={() => setCountIn((value) => {
+                  countInRef.current = !value;
+                  return !value;
+                })}
                 className={cn("h-10 rounded-full border px-3 text-sm font-semibold", countIn ? "border-accent bg-accent text-accent-ink" : "border-line text-fg")}
               >
                 Отсчёт 1·2·3·4
@@ -687,7 +696,12 @@ export function Session(props: SessionProps) {
                 <span className={cn("beat-pip size-2.5 rounded-full", playing ? "bg-ember" : "bg-line")} key={barLabel} />
               </span>
             </div>
+            <div className="volume-controls mt-3 grid grid-cols-2 gap-3">
+              <label className="min-w-0 text-xs font-medium text-muted">Громкость трека<input type="range" min={0} max={1} step={0.01} value={trackVolume} aria-label="Громкость основного трека" onChange={(event) => { const value = Number(event.currentTarget.value); setTrackVolume(value); engineRef.current?.setTrackVolume(value); }} /></label>
+              <label className="min-w-0 text-xs font-medium text-muted">Громкость метронома<input type="range" min={0} max={1} step={0.01} value={metronomeVolume} aria-label="Громкость метронома" onChange={(event) => { const value = Number(event.currentTarget.value); setMetronomeVolume(value); engineRef.current?.setMetronomeVolume(value); }} /></label>
+            </div>
           </section>
+          <button type="button" className="landscape-control-toggle" aria-label={controlsVisible ? "Скрыть панель управления" : "Показать панель управления"} aria-expanded={controlsVisible} onClick={() => setControlsVisible((visible) => !visible)}>{controlsVisible ? <ChevronDown className="size-5" /> : <ChevronUp className="size-5" />}<span>{controlsVisible ? "Скрыть" : "Управление"}</span></button>
 
           {error ? (
             <p className="rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ember" role="alert">

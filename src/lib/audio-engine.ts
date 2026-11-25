@@ -18,6 +18,9 @@ type Voice = {
 export class BandEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private clickBus: GainNode | null = null;
+  private trackVolume = 1;
+  private metronomeVolume = 0.65;
   private pcm = new Map<string, Float32Array>();
   private buffers = new Map<string, AudioBuffer>();
   private notes: MixNote[] = [];
@@ -60,6 +63,16 @@ export class BandEngine {
 
   setMutedTracks(tracks: number[]): void {
     this.muted = new Set(tracks);
+  }
+
+  setTrackVolume(value: number): void {
+    this.trackVolume = clampVolume(value);
+    if (this.ctx && this.master) this.master.gain.setTargetAtTime(0.82 * this.trackVolume, this.ctx.currentTime, 0.02);
+  }
+
+  setMetronomeVolume(value: number): void {
+    this.metronomeVolume = clampVolume(value);
+    if (this.ctx && this.clickBus) this.clickBus.gain.setTargetAtTime(this.metronomeVolume, this.ctx.currentTime, 0.02);
   }
 
   setMetronome(enabled: boolean): void {
@@ -162,14 +175,17 @@ export class BandEngine {
     void this.ctx?.close();
     this.ctx = null;
     this.master = null;
+    this.clickBus = null;
     this.buffers.clear();
   }
 
   private ensure(): AudioContext {
-    if (this.ctx && this.master) return this.ctx;
+    if (this.ctx && this.master && this.clickBus) return this.ctx;
     const ctx = new AudioContext();
     const master = ctx.createGain();
-    master.gain.value = 0.82;
+    master.gain.value = 0.82 * this.trackVolume;
+    const clickBus = ctx.createGain();
+    clickBus.gain.value = this.metronomeVolume;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
     comp.knee.value = 16;
@@ -177,9 +193,11 @@ export class BandEngine {
     comp.attack.value = 0.006;
     comp.release.value = 0.2;
     master.connect(comp);
+    clickBus.connect(comp);
     comp.connect(ctx.destination);
     this.ctx = ctx;
     this.master = master;
+    this.clickBus = clickBus;
     return ctx;
   }
 
@@ -275,8 +293,8 @@ export class BandEngine {
 
   private scheduleClickAt(when: number, accent: boolean): void {
     const ctx = this.ctx;
-    const master = this.master;
-    if (!ctx || !master || when < ctx.currentTime - 0.06) return;
+    const clickBus = this.clickBus;
+    if (!ctx || !clickBus || when < ctx.currentTime - 0.06) return;
     const osc = ctx.createOscillator();
     const amp = ctx.createGain();
     osc.type = "sine";
@@ -285,7 +303,7 @@ export class BandEngine {
     amp.gain.exponentialRampToValueAtTime(accent ? 0.22 : 0.13, when + 0.003);
     amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
     osc.connect(amp);
-    amp.connect(master);
+    amp.connect(clickBus);
     osc.start(when);
     osc.stop(when + 0.05);
   }
@@ -393,6 +411,11 @@ export class BandEngine {
     window.clearInterval(this.timer);
     this.timer = 0;
   }
+}
+
+function clampVolume(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(1, Math.max(0, value));
 }
 
 export function clampSpeed(speed: number): number {
