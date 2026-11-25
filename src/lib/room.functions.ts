@@ -138,6 +138,7 @@ export const pushTransport = createServerFn({ method: "POST" })
     const songId = Number(row?.songId);
     const trackIndex = Number(row?.trackIndex);
     const positionMs = Number(row?.positionMs);
+    const requestedAnchorMs = Number(row?.anchorMs);
     const speed = clampSpeed(Number(row?.speed));
     if (!Number.isInteger(songId) || songId <= 0) throw new Error("Не выбрана песня");
     if (!Number.isFinite(positionMs) || positionMs < 0 || positionMs > 3 * 60 * 60 * 1000) {
@@ -153,6 +154,9 @@ export const pushTransport = createServerFn({ method: "POST" })
       playing: row?.playing === true,
       positionMs,
       speed,
+      anchorMs: Number.isFinite(requestedAnchorMs) && requestedAnchorMs >= Date.now() - 2000 && requestedAnchorMs <= Date.now() + 15000
+        ? Math.round(requestedAnchorMs)
+        : Date.now(),
       title,
       artist,
     };
@@ -168,7 +172,7 @@ export const pushTransport = createServerFn({ method: "POST" })
         artist = ${data.artist},
         playing = ${data.playing},
         position_ms = ${data.positionMs},
-        anchor_ms = ${now},
+        anchor_ms = ${data.anchorMs ?? now},
         speed = ${data.speed},
         seq = seq + 1,
         updated_at = now()
