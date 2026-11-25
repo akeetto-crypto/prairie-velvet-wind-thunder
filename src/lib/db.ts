@@ -1,4 +1,5 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { applyMigrations } from "../../scripts/apply-migrations.mjs";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
@@ -85,6 +86,24 @@ function toSql(run: Run): Sql {
   return sql;
 }
 
+async function applyNeonMigrations(pool: import("pg").Pool): Promise<void> {
+  // Bundle migration SQL so it is available if Vercel only injects the
+  // Marketplace DATABASE_URL into the serverless runtime, not the build.
+  const migrations = import.meta.glob("/migrations/*.sql", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>;
+  if (Object.keys(migrations).length === 0) return;
+
+  const client = await pool.connect();
+  try {
+    await applyMigrations(client, migrations);
+  } finally {
+    client.release();
+  }
+}
+
 function createNeonSql(): Promise<Sql> {
   globalRef.__pgSqlPromise__ ??= (async () => {
     // Regular Postgres driver: node-postgres (`pg`) — works directly with Neon's
@@ -94,10 +113,16 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
     const pool = new Pool({ connectionString: databaseUrl });
-    return toSql(async <T>(text: string, params: unknown[]) => {
-      const res = await pool.query(text, params);
-      return res.rows as T[];
-    });
+    try {
+      await applyNeonMigrations(pool);
+      return toSql(async <T>(text: string, params: unknown[]) => {
+        const res = await pool.query(text, params);
+        return res.rows as T[];
+      });
+    } catch (error) {
+      await pool.end();
+      throw error;
+    }
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;
     throw err;
@@ -223,13 +248,12 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
  *
  * - **PGLite** (preview / no `DATABASE_URL`): open the in-memory DB and apply
  *   `migrations/*.sql`. Idempotent — concurrent callers share one promise.
- * - **Neon**: no-op (pool is created lazily on first query).
+ * - **Neon**: initialize the pool and apply pending migrations before traffic.
  *
  * Vite `configureServer` awaits this at dev startup; production imports of this
  * module kick it off immediately (see bottom of file).
  */
 export function ensureDbReady(): Promise<void> {
-  if (dbSource !== "pglite") return Promise.resolve();
   return getSql().then(() => undefined);
 }
 
