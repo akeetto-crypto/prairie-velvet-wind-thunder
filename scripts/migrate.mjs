@@ -2,7 +2,7 @@
 /**
  * Deploy-time database migrator (node-postgres, `pg`).
  *
- * Runs during `npm run build` вЂ” on every Vercel deploy вЂ” applying pending files
+ * Runs during `npm run build` — on every Vercel deploy — applying pending files
  * in ../migrations to DATABASE_URL. Pending migrations run atomically and are
  * recorded in `_migrations`, so deployment and runtime can safely race/retry.
  *
@@ -22,7 +22,7 @@ import { applyMigrations } from "./apply-migrations.mjs";
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   console.log(
-    "[migrate] DATABASE_URL not set вЂ” skipping (the PGLite fallback migrates itself).",
+    "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",
   );
   process.exit(0);
 }
@@ -34,12 +34,12 @@ async function main() {
   try {
     entries = await readdir(migrationsDir);
   } catch {
-    console.log("[migrate] no migrations/ directory вЂ” nothing to do.");
+    console.log("[migrate] no migrations/ directory — nothing to do.");
     return;
   }
   // An app with no schema of its own must not pay for a database connection.
   if (pendingMigrations(entries, []).length === 0) {
-    console.log("[migrate] no migrations вЂ” nothing to do.");
+    console.log("[migrate] no migrations — nothing to do.");
     return;
   }
 
@@ -58,7 +58,7 @@ async function main() {
     const count = await applyMigrations(client, migrations);
     console.log(
       count
-        ? `[migrate] done вЂ” ${count} migration(s) applied.`
+        ? `[migrate] done — ${count} migration(s) applied.`
         : "[migrate] up to date.",
     );
   } finally {
@@ -75,4 +75,3 @@ main().catch((err) => {
   }
   process.exit(1);
 });
-
