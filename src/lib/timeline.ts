@@ -437,6 +437,27 @@ function compileTrack(part: RawPart, trackIndex: number, master: Master, songMs:
   }
 
   events.sort((a, b) => a.t - b.t);
+  if (kind === 2) {
+    const merged: ViewEvent[] = [];
+    for (const event of events) {
+      const previous = merged[merged.length - 1];
+      const sameRhythm = previous
+        && previous.rhythm.base === event.rhythm.base
+        && previous.rhythm.dots === event.rhythm.dots
+        && previous.rhythm.tuplet === event.rhythm.tuplet;
+      if (previous && sameRhythm && Math.abs(previous.t - event.t) <= 2) {
+        for (const note of event.notes) {
+          if (!previous.notes.some((item) => item.m === note.m && item.s === note.s)) previous.notes.push(note);
+        }
+        previous.d = Math.max(previous.d, event.d);
+        previous.rest = previous.notes.length === 0 && Boolean(previous.rest && event.rest);
+      } else {
+        merged.push({ ...event, notes: [...event.notes] });
+      }
+    }
+    events.length = 0;
+    for (const event of merged) events.push(event);
+  }
   notes.sort((a, b) => a.t - b.t);
 
   return {

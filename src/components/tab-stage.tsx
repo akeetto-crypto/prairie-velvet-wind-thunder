@@ -113,14 +113,16 @@ export const TabStage = memo(function TabStage({
         }
         const [beats, den] = bar.sig.split("/").map(Number);
         const pulse = bar.d / (beats || 4);
-        ctx.fillStyle = "#5c6370";
-        for (let p = 0; p < (beats || 4); p++) {
-          if (den === 8 && p % 3 !== 0) continue;
-          const bx = x + p * pulse * pxPerMs;
-          if (bx < GUTTER || bx > w) continue;
-          ctx.beginPath();
-          ctx.arc(bx, bottom + 16, p === 0 ? 2.2 : 1.5, 0, Math.PI * 2);
-          ctx.fill();
+        if (current.kind !== 2) {
+          ctx.fillStyle = "#5c6370";
+          for (let p = 0; p < (beats || 4); p++) {
+            if (den === 8 && p % 3 !== 0) continue;
+            const bx = x + p * pulse * pxPerMs;
+            if (bx < GUTTER || bx > w) continue;
+            ctx.beginPath();
+            ctx.arc(bx, bottom + 16, p === 0 ? 2.2 : 1.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
 
@@ -214,7 +216,7 @@ export const TabStage = memo(function TabStage({
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(playX, top - 22);
-      ctx.lineTo(playX, bottom + 10);
+      ctx.lineTo(playX, current.kind === 2 ? drumY(6, top, gap) + 8 : bottom + 10);
       ctx.stroke();
       ctx.fillStyle = CURSOR;
       ctx.beginPath();
@@ -267,14 +269,16 @@ export function useBarLabel(view: PartView | null, ms: number): string {
 }
 
 function drumY(lane: number, top: number, gap: number): number {
+  // Five-line percussion staff: cymbals sit above or on the top line,
+  // toms descend through the staff, and the kick sits just below it.
   const positions = [
-    top - gap,
-    top,
     top - gap * 0.5,
+    top,
+    top + gap * 0.5,
     top + gap * 2,
     top + gap * 3,
     top + gap * 3.5,
-    top + gap * 4,
+    top + gap * 4.5,
   ];
   return positions[Math.max(0, Math.min(6, lane))];
 }
@@ -434,23 +438,25 @@ function drawDrumEvent(
     drawDrumRest(ctx, x, top, bottom, gap, rhythm);
     return;
   }
+
   const ys = notes.map((note) => drumY(note.s, top, gap));
-  const middle = top + gap * 2;
-  const stemUp = ys.reduce((sum, y) => sum + y, 0) / ys.length >= middle;
-  const stemX = x + (stemUp ? 4 : -4);
+  const stemX = x - 4;
+  const stemStart = Math.min(...ys);
+  const stemEnd = bottom + gap * 1.45;
   const whole = rhythm.base === 1;
-  const stemStart = stemUp ? Math.max(...ys) : Math.min(...ys);
-  const stemEnd = stemUp ? Math.min(top - 20, stemStart - 24) : Math.max(bottom + 20, stemStart + 24);
   ctx.save();
   ctx.strokeStyle = FRET;
   ctx.fillStyle = FRET;
   ctx.lineWidth = 1.5;
+
   notes.forEach((note, index) => {
     const y = ys[index];
-    const lane = Math.max(0, Math.min(6, note.s));
-    const cymbal = lane <= 2;
-    const duplicatesAbove = notes.slice(0, index).some((prior) => drumY(prior.s, top, gap) === y);
-    const noteX = x + (duplicatesAbove ? (index % 2 ? 5 : -5) : 0);
+    const midi = Math.round(note.m);
+    const samePositionBefore = notes.slice(0, index).some((prior) => drumY(prior.s, top, gap) === y);
+    const noteX = x + (samePositionBefore ? (index % 2 ? 5 : -5) : 0);
+    const cymbal = note.s <= 2;
+    const openCymbal = [46, 49, 52, 55, 57].includes(midi);
+    const bell = midi === 53;
     if (cymbal) {
       ctx.beginPath();
       ctx.moveTo(noteX - 4, y - 4);
@@ -458,19 +464,20 @@ function drawDrumEvent(
       ctx.moveTo(noteX + 4, y - 4);
       ctx.lineTo(noteX - 4, y + 4);
       ctx.stroke();
+      if (openCymbal || bell) {
+        ctx.beginPath();
+        ctx.ellipse(noteX, y, 6.4, 5.1, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     } else {
       ctx.beginPath();
       ctx.ellipse(noteX, y, 4.5, 3.3, -0.25, 0, Math.PI * 2);
-      if (rhythm.base <= 2) {
-        ctx.stroke();
-      } else {
-        ctx.fill();
-      }
+      if (rhythm.base <= 2) ctx.stroke();
+      else ctx.fill();
     }
-    if (rhythm.dots) {
-      for (let dot = 0; dot < rhythm.dots; dot++) {
-        ctx.fillRect(noteX + 7 + dot * 4, y - 1, 2, 2);
-      }
+
+    for (let dot = 0; dot < rhythm.dots; dot++) {
+      ctx.fillRect(noteX + 7 + dot * 4, y - 1, 2, 2);
     }
   });
 
@@ -479,31 +486,28 @@ function drawDrumEvent(
     ctx.moveTo(stemX, stemStart);
     ctx.lineTo(stemX, stemEnd);
     ctx.stroke();
+
     if (beamTo != null && rhythmicFlags(rhythm) > 0) {
-      const otherStemX = beamTo + (stemUp ? 4 : -4);
+      const nextStemX = beamTo - 4;
       for (let level = 0; level < rhythmicFlags(rhythm); level++) {
-        const beamY = stemEnd + (stemUp ? 1 : -1) * level * 4;
-        ctx.fillRect(Math.min(stemX, otherStemX), beamY, Math.max(1, Math.abs(otherStemX - stemX)), 2.2);
+        const beamY = stemEnd - 2 - level * 4;
+        ctx.fillRect(Math.min(stemX, nextStemX), beamY, Math.max(1, Math.abs(nextStemX - stemX)), 2.2);
       }
     } else if (!beamedFromPrevious) {
       for (let flag = 0; flag < rhythmicFlags(rhythm); flag++) {
-        const flagY = stemEnd + (stemUp ? 1 : -1) * flag * 4;
+        const flagY = stemEnd - flag * 4;
         ctx.beginPath();
         ctx.moveTo(stemX, flagY);
-        ctx.quadraticCurveTo(
-          stemX + (stemUp ? 8 : -8),
-          flagY + (stemUp ? 5 : -5),
-          stemX + (stemUp ? 4 : -4),
-          flagY + (stemUp ? 10 : -10),
-        );
+        ctx.quadraticCurveTo(stemX - 8, flagY - 4, stemX - 4, flagY - 9);
         ctx.stroke();
       }
     }
   }
+
   if (rhythm.tuplet) {
     ctx.font = "600 9px Manrope, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(String(rhythm.tuplet), beamTo == null ? x : (x + beamTo) / 2, stemEnd + (stemUp ? -4 : 12));
+    ctx.fillText(String(rhythm.tuplet), beamTo == null ? x : (x + beamTo) / 2, stemEnd + 11);
   }
   ctx.restore();
 }
