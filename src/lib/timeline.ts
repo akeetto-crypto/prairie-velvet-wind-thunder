@@ -514,12 +514,13 @@ export function formatTime(ms: number): string {
 }
 
 export function drumLine(midi: number): number {
-  if (midi === 49 || midi === 52 || midi === 55 || midi === 57) return 0;
-  if (midi === 51 || midi === 53 || midi === 59) return 1;
-  if (midi === 42 || midi === 44 || midi === 46) return 0;
-  if (midi === 38 || midi === 40 || midi === 37 || midi === 39) return 2;
-  if (midi === 41 || midi === 43 || midi === 45 || midi === 47 || midi === 48 || midi === 50) return 3;
-  if (midi === 35 || midi === 36) return 5;
+  if ([49, 52, 55, 57].includes(midi)) return 0; // crash and splash cymbals
+  if ([51, 53, 59].includes(midi)) return 1; // ride cymbals
+  if ([42, 44, 46].includes(midi)) return 2; // hi-hat
+  if ([37, 38, 39, 40].includes(midi)) return 3; // snare
+  if ([47, 48, 50].includes(midi)) return 4; // high and mid toms
+  if ([41, 43, 45].includes(midi)) return 5; // low toms
+  if ([35, 36].includes(midi)) return 6; // bass drum
   return 4;
 }
 
@@ -534,7 +535,7 @@ export function drumGlyph(midi: number): string {
   return "·";
 }
 
-const DRUM_LABELS = ["C", "R", "S", "T", "·", "K"];
+const DRUM_LABELS = ["Cr", "Rd", "HH", "Sn", "MT", "FT", "K"];
 
 export function drumLaneLabel(line: number): string {
   return DRUM_LABELS[line] ?? "·";

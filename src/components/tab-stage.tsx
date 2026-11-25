@@ -200,7 +200,7 @@ export const TabStage = memo(function TabStage({
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       if (current.kind === 2) {
-        for (let lane = 0; lane < 6; lane++) {
+        for (let lane = 0; lane < 7; lane++) {
           ctx.fillText(drumLaneLabel(lane), 28, drumY(lane, top, gap));
         }
       } else if (current.tuning) {
@@ -266,8 +266,16 @@ export function useBarLabel(view: PartView | null, ms: number): string {
 }
 
 function drumY(lane: number, top: number, gap: number): number {
-  const positions = [top - gap * 0.5, top, top + gap * 2, top + gap * 2.5, top + gap * 3, top + gap * 4];
-  return positions[Math.max(0, Math.min(5, lane))];
+  const positions = [
+    top - gap,
+    top,
+    top - gap * 0.5,
+    top + gap * 2,
+    top + gap * 3,
+    top + gap * 3.5,
+    top + gap * 4,
+  ];
+  return positions[Math.max(0, Math.min(6, lane))];
 }
 
 function rhythmicFlags(rhythm: Rhythm): number {
@@ -330,6 +338,57 @@ function drawTabRhythm(
   ctx.restore();
 }
 
+function drawDrumRest(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  top: number,
+  bottom: number,
+  gap: number,
+  rhythm: Rhythm,
+): void {
+  const middle = top + gap * 2;
+  ctx.save();
+  ctx.fillStyle = FRET;
+  ctx.strokeStyle = FRET;
+  ctx.lineWidth = 1.6;
+  if (rhythm.base === 1 || rhythm.base === 2) {
+    const y = rhythm.base === 1 ? middle + gap * 0.5 : middle - gap * 0.5;
+    ctx.fillRect(x - 5, y - 2, 10, 4);
+  } else if (rhythm.base === 4) {
+    ctx.beginPath();
+    ctx.moveTo(x + 1, middle - 12);
+    ctx.lineTo(x - 3, middle - 5);
+    ctx.lineTo(x + 3, middle - 1);
+    ctx.lineTo(x - 2, middle + 5);
+    ctx.lineTo(x + 2, middle + 11);
+    ctx.stroke();
+  } else {
+    const flags = rhythmicFlags(rhythm);
+    ctx.beginPath();
+    ctx.moveTo(x + 1, middle - 12);
+    ctx.lineTo(x - 3, middle - 5);
+    ctx.lineTo(x + 3, middle - 1);
+    ctx.lineTo(x - 2, middle + 5);
+    ctx.stroke();
+    for (let flag = 0; flag < flags; flag++) {
+      const y = middle + 3 + flag * 4;
+      ctx.beginPath();
+      ctx.moveTo(x - 2, y);
+      ctx.quadraticCurveTo(x + 5, y + 2, x + 2, y + 7);
+      ctx.stroke();
+    }
+  }
+  for (let dot = 0; dot < rhythm.dots; dot++) {
+    ctx.fillRect(x + 7 + dot * 4, middle - 1, 2, 2);
+  }
+  if (rhythm.tuplet) {
+    ctx.font = "600 9px Manrope, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(rhythm.tuplet), x, middle + gap + 5);
+  }
+  ctx.restore();
+}
+
 function drawDrumEvent(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -341,42 +400,85 @@ function drawDrumEvent(
   rest: boolean,
   beamTo?: number,
 ): void {
-  const center = top + gap * 2;
   if (rest || notes.length === 0) {
-    drawTabRhythm(ctx, x, bottom, rhythm, true);
+    drawDrumRest(ctx, x, top, bottom, gap, rhythm);
     return;
   }
   const ys = notes.map((note) => drumY(note.s, top, gap));
-  const stemUp = ys.reduce((a, b) => a + b, 0) / ys.length >= center;
+  const middle = top + gap * 2;
+  const stemUp = ys.reduce((sum, y) => sum + y, 0) / ys.length >= middle;
   const stemX = x + (stemUp ? 4 : -4);
-  ctx.save(); ctx.strokeStyle = FRET; ctx.fillStyle = FRET; ctx.lineWidth = 1.5;
+  const whole = rhythm.base === 1;
+  const stemStart = stemUp ? Math.max(...ys) : Math.min(...ys);
+  const stemEnd = stemUp ? Math.min(top - 20, stemStart - 24) : Math.max(bottom + 20, stemStart + 24);
+  ctx.save();
+  ctx.strokeStyle = FRET;
+  ctx.fillStyle = FRET;
+  ctx.lineWidth = 1.5;
   notes.forEach((note, index) => {
     const y = ys[index];
-    const cymbal = [42,44,46,49,51,52,53,55,57,59].includes(Math.round(note.m));
+    const lane = Math.max(0, Math.min(6, note.s));
+    const cymbal = lane <= 2;
+    const duplicatesAbove = notes.slice(0, index).some((prior) => drumY(prior.s, top, gap) === y);
+    const noteX = x + (duplicatesAbove ? (index % 2 ? 5 : -5) : 0);
     if (cymbal) {
-      ctx.beginPath(); ctx.moveTo(x - 4, y - 4); ctx.lineTo(x + 4, y + 4); ctx.moveTo(x + 4, y - 4); ctx.lineTo(x - 4, y + 4); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(noteX - 4, y - 4);
+      ctx.lineTo(noteX + 4, y + 4);
+      ctx.moveTo(noteX + 4, y - 4);
+      ctx.lineTo(noteX - 4, y + 4);
+      ctx.stroke();
     } else {
-      ctx.beginPath(); ctx.ellipse(x, y, 4.5, 3.3, -0.25, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(noteX, y, 4.5, 3.3, -0.25, 0, Math.PI * 2);
+      if (rhythm.base <= 2) {
+        ctx.fill();
+        ctx.strokeStyle = BG;
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        ctx.strokeStyle = FRET;
+        ctx.lineWidth = 1.5;
+      } else {
+        ctx.fill();
+      }
+    }
+    if (rhythm.dots) {
+      for (let dot = 0; dot < rhythm.dots; dot++) {
+        ctx.fillRect(noteX + 7 + dot * 4, y - 1, 2, 2);
+      }
     }
   });
-  const startY = stemUp ? Math.max(...ys) : Math.min(...ys);
-  const endY = stemUp ? Math.min(top - 20, startY - 24) : Math.max(bottom + 20, startY + 24);
-  ctx.beginPath(); ctx.moveTo(stemX, startY); ctx.lineTo(stemX, endY); ctx.stroke();
-  if (beamTo != null) {
-    const levels = rhythmicFlags(rhythm);
-    for (let level = 0; level < levels; level++) {
-      const beamY = endY + (stemUp ? 1 : -1) * level * 4;
-      ctx.fillRect(Math.min(stemX, beamTo), beamY, Math.abs(beamTo - stemX), 2.2);
-    }
-  } else {
-    for (let flag = 0; flag < rhythmicFlags(rhythm); flag++) {
-      const flagY = endY + (stemUp ? 1 : -1) * flag * 4;
-      ctx.beginPath(); ctx.moveTo(stemX, flagY);
-      ctx.quadraticCurveTo(stemX + (stemUp ? 8 : -8), flagY + (stemUp ? 5 : -5), stemX + (stemUp ? 4 : -4), flagY + (stemUp ? 10 : -10)); ctx.stroke();
+
+  if (!whole) {
+    ctx.beginPath();
+    ctx.moveTo(stemX, stemStart);
+    ctx.lineTo(stemX, stemEnd);
+    ctx.stroke();
+    if (beamTo != null && rhythmicFlags(rhythm) > 0) {
+      const otherStemX = beamTo + (stemUp ? 4 : -4);
+      for (let level = 0; level < rhythmicFlags(rhythm); level++) {
+        const beamY = stemEnd + (stemUp ? 1 : -1) * level * 4;
+        ctx.fillRect(Math.min(stemX, otherStemX), beamY, Math.max(1, Math.abs(otherStemX - stemX)), 2.2);
+      }
+    } else {
+      for (let flag = 0; flag < rhythmicFlags(rhythm); flag++) {
+        const flagY = stemEnd + (stemUp ? 1 : -1) * flag * 4;
+        ctx.beginPath();
+        ctx.moveTo(stemX, flagY);
+        ctx.quadraticCurveTo(
+          stemX + (stemUp ? 8 : -8),
+          flagY + (stemUp ? 5 : -5),
+          stemX + (stemUp ? 4 : -4),
+          flagY + (stemUp ? 10 : -10),
+        );
+        ctx.stroke();
+      }
     }
   }
-  for (let dot = 0; dot < rhythm.dots; dot++) ctx.fillRect(x + 8 + dot * 4, Math.min(...ys), 2, 2);
-  if (rhythm.tuplet) { ctx.font = "600 9px Manrope, sans-serif"; ctx.textAlign = "center"; ctx.fillText(String(rhythm.tuplet), beamTo == null ? x : (x + beamTo) / 2, endY + (stemUp ? -4 : 12)); }
+  if (rhythm.tuplet) {
+    ctx.font = "600 9px Manrope, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(rhythm.tuplet), beamTo == null ? x : (x + beamTo) / 2, stemEnd + (stemUp ? -4 : 12));
+  }
   ctx.restore();
 }
-
