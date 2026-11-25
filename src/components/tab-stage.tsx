@@ -145,10 +145,11 @@ export const TabStage = memo(function TabStage({
         const next = current.events[eventIndex + 1];
         const sameBar = next && barAt(current.bars, next.t)?.i === barAt(current.bars, ev.t)?.i;
         const canBeam = !ev.rest && ev.rhythm.base >= 8 && next && !next.rest && next.rhythm.base === ev.rhythm.base && sameBar && Math.abs(ev.t + ev.d - next.t) < 45;
+        const beamedFromPrevious = beamed.has(eventIndex);
         if (current.kind === 2) {
-          drawDrumEvent(ctx, x, top, bottom, gap, ev.notes, ev.rhythm, Boolean(ev.rest), canBeam ? playX + (next!.t - pos) * pxPerMs : undefined);
+          drawDrumEvent(ctx, x, top, bottom, gap, ev.notes, ev.rhythm, Boolean(ev.rest), canBeam ? playX + (next!.t - pos) * pxPerMs : undefined, beamedFromPrevious);
         } else {
-          drawTabRhythm(ctx, x, bottom, ev.rhythm, Boolean(ev.rest), canBeam ? playX + (next!.t - pos) * pxPerMs : undefined);
+          drawTabRhythm(ctx, x, bottom, ev.rhythm, Boolean(ev.rest), canBeam ? playX + (next!.t - pos) * pxPerMs : undefined, beamedFromPrevious);
         }
         if (canBeam) beamed.add(eventIndex + 1);
         if (ev.chord) {
@@ -289,6 +290,7 @@ function drawTabRhythm(
   rhythm: Rhythm,
   rest: boolean,
   beamTo?: number,
+  beamedFromPrevious = false,
 ): void {
   const y = bottom + 9;
   ctx.save();
@@ -350,7 +352,7 @@ function drawTabRhythm(
       const beamY = endY - level * 4;
       ctx.fillRect(Math.min(x, beamTo), beamY, Math.abs(beamTo - x), 2.4);
     }
-  } else {
+  } else if (!beamedFromPrevious) {
     for (let flag = 0; flag < rhythmicFlags(rhythm); flag++) {
       const flagY = endY - flag * 4;
       ctx.beginPath(); ctx.moveTo(x, flagY);
@@ -426,6 +428,7 @@ function drawDrumEvent(
   rhythm: Rhythm,
   rest: boolean,
   beamTo?: number,
+  beamedFromPrevious = false,
 ): void {
   if (rest || notes.length === 0) {
     drawDrumRest(ctx, x, top, bottom, gap, rhythm);
@@ -482,7 +485,7 @@ function drawDrumEvent(
         const beamY = stemEnd + (stemUp ? 1 : -1) * level * 4;
         ctx.fillRect(Math.min(stemX, otherStemX), beamY, Math.max(1, Math.abs(otherStemX - stemX)), 2.2);
       }
-    } else {
+    } else if (!beamedFromPrevious) {
       for (let flag = 0; flag < rhythmicFlags(rhythm); flag++) {
         const flagY = stemEnd + (stemUp ? 1 : -1) * flag * 4;
         ctx.beginPath();
