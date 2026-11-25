@@ -56,21 +56,25 @@ test("non-.sql entries are dropped (readdir also yields the auth/ directory)", (
   assert.deepEqual(pendingMigrations(["auth", "README.md"], []), []);
 });
 
-test("the auth schema ships outside the globbed directory", () => {
+test("the rooms schema is active and the auth schema stays opt-in", () => {
   const migrationsDir = join(projectRoot(), "migrations");
-  assert.deepEqual(pendingMigrations(readdirSync(migrationsDir), []), []);
+  assert.deepEqual(
+    pendingMigrations(readdirSync(migrationsDir), []).map(({ name }) => name),
+    ["0002_rooms.sql"],
+  );
   assert.ok(readdirSync(join(migrationsDir, "auth")).includes("0001_auth.sql"));
+  assert.ok(readFileSync(join(migrationsDir, "0002_rooms.sql"), "utf8").includes("create table if not exists rooms"));
 });
 
 test("this workspace's auth schema copy is byte-identical to its source", () => {
   // An edited copy diverges silently: basename keying skips it on a database
   // that already ran the original, and applies it on a fresh PGLite preview.
   const pair = authSchemaCopy(projectRoot());
-  if (pair === null) return; // sign-in off — nothing has been copied up
+  if (pair === null) return; // sign-in off вЂ” nothing has been copied up
   assert.equal(
     pair.copy,
     pair.source,
-    "migrations/0001_auth.sql has been edited — it must stay a verbatim copy of migrations/auth/0001_auth.sql",
+    "migrations/0001_auth.sql has been edited вЂ” it must stay a verbatim copy of migrations/auth/0001_auth.sql",
   );
 });
 
@@ -88,3 +92,4 @@ test("the copy check reads both files and catches an edit", () => {
   const drifted = authSchemaCopy(root);
   assert.notEqual(drifted.copy, drifted.source);
 });
+
